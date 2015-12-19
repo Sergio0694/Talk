@@ -28,18 +28,14 @@ void* handler(void* arg)
 	// TODO
 }
 
-int main(int argc, char* argv[])
+void server_intial_setup(int socket_desc)
 {
     int ret;
-
-    int socket_desc, client_desc;
 
     // some fields are required to be filled with 0
     struct sockaddr_in server_addr = {0};
 
-    int sockaddr_len = sizeof(struct sockaddr_in); 
-
-    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
+    int sockaddr_len = sizeof(struct sockaddr_in);
 
     // initialize sockaddr_in fields
     sockaddr_in.sin_family = AF_INET;
@@ -58,6 +54,18 @@ int main(int argc, char* argv[])
     // start listening
     ret = listen(socket_desc, MAX_CONN_QUEUE);
     ERROR_HELPER(ret, "Cannot listen on socket");
+}
+
+int main(int argc, char* argv[])
+{
+    int ret;
+
+    int socket_desc, client_desc;
+
+    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
+    ERROR_HELPER(socket_desc, "cannot open server socket");
+
+    server_intial_setup(socket_desc);
 
     // we allocate client_addr dynamically and initialize it to zero
     struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
