@@ -105,3 +105,104 @@ void add(list_t list, char* name, guid_t guid, char* ip)
 	list->length = list->length + 1;
 }
 
+// A macro that just returns checks if the list is either null or empty
+#define IS_EMPTY(target) target == NULL || target->length == 0
+
+// Remove GUID
+bool_t remove_guid(list_t list, guid_t guid)
+{
+	// Check if the list is empty
+	if (IS_EMPTY(list)) return FALSE;
+
+	// Create a temp iterator
+	nodePointer pointer = list->head;
+	while (pointer != NULL)
+	{
+		// If the GUID matches, remove the item from the list
+		if (pointer->guid == guid)
+		{
+			// Deallocate the content of the item
+			free(pointer->name);
+			free(pointer->ip);
+
+			// Adjust the references
+			if (pointer->next == NULL) list->tail = NULL;
+			else pointer->previous->next = pointer->next;
+
+			// Update the list length and deallocate the removed item
+			list->length = list->length - 1;
+			free(pointer);
+			return TRUE;
+		}
+
+		// Move to the next element in the list
+		pointer = pointer->next;
+	}
+
+	// GUID not found, just return false
+	return FALSE;
+}
+
+// Get node [helper function]
+static nodePointer get_node(list_t list, guid_t guid);
+
+static nodePointer get_node(list_t list, guid_t guid)
+{
+	// Iterate the target list
+	nodePointer pointer = list->head;
+	while (pointer != NULL)
+	{
+		// If the GUIDs match, return the current node
+		if (pointer->guid == guid) return pointer;
+		pointer = pointer->next;
+	}
+
+	// Search unsuccessful, return null
+	return NULL;
+}
+
+// Sets a custom flag in a given node [helper function]
+static bool_t set_custom_flag(const list_t list, guid_t guid, bool_t target_value, bool_t first_flag);
+
+static bool_t set_custom_flag(const list_t list, guid_t guid, bool_t target_value, bool_t first_flag)
+{
+	// Input check
+	VALID_LIST_CHECK(list);
+
+	// Try to get the right item inside the list
+	nodePointer targetNode = get_node(list, guid);
+
+	// If the GUID isn't present, just return false
+	if (targetNode == NULL) return FALSE;
+
+	// Update the right flag
+	if (first_flag == TRUE) targetNode->available = target_value;
+	else targetNode->connection_requested = target_value;
+	return TRUE;
+}
+
+// Set available flag
+bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value)
+{
+	return set_custom_flag(list, guid, target_value, TRUE);
+}
+
+// Set connection requested flag
+bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value)
+{
+	return set_custom_flag(list, guid, target_value, FALSE);
+}
+
+// Get IP address
+char* get_ip(const list_t list, guid_t guid)
+{
+	// Input check
+	if (IS_EMPTY(list)) return NULL;
+
+	// Try to get the target node
+	nodePointer pointer = get_node(list, guid);
+	if (pointer == NULL) return NULL;
+
+	// If the GUID has been found, return the corresponding IP address
+	return pointer->ip;
+}
