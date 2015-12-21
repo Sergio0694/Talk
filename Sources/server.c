@@ -71,7 +71,6 @@ void* handler(void* arg)
     // aux variables
     char buf[1024];
     size_t buf_len = sizeof(buf);
-    int i;
 
     // parse client IP address and port
     char client_ip[INET_ADDRSTRLEN];
@@ -112,8 +111,12 @@ void* handler(void* arg)
     buf = serialize_guid(guid);
     send_to_client(socketd, buf);
 
+    // ###### critical section here - semaphore needed ######
+
     // add the user to users_list
     add(users_list, name, guid, client_ip);
+
+    // ######################################################
 
 	struct timeval tv;
     tv.tv_sec = 5;
@@ -124,6 +127,8 @@ void* handler(void* arg)
 void server_intial_setup(int socket_desc)
 {
     int ret;
+
+    users_list = create();
 
     // some fields are required to be filled with 0
     struct sockaddr_in server_addr = {0};
@@ -159,7 +164,6 @@ int main(int argc, char* argv[])
     ERROR_HELPER(socket_desc, "cannot open server socket");
 
     server_intial_setup(socket_desc);
-    users_list = create();
 
     // we allocate client_addr dynamically and initialize it to zero
     struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
