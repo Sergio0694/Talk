@@ -77,6 +77,18 @@ void destroy(&list_t list)
 	free(list);
 }
 
+char* serialize(list_t list)
+{
+	if (IS_EMPTY(list)) return NULL;
+	char* buffer = NULL;
+
+	nodePointer pointer = list->head;
+	while (pointer != NULL)
+	{
+
+	}
+}
+
 // Add
 void add(list_t list, char* name, guid_t guid, char* ip)
 {

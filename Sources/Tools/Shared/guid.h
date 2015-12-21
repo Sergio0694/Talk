@@ -17,4 +17,8 @@ typedef long long guid_t
 *    Generates a new, pseudo-random 64 bit GUID */
 guid_t new_guid();
 
+char* serialize(guid_t guid);
+
+guid_t deserialize(char* buffer);
+
 #endif
