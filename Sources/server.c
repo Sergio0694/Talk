@@ -6,10 +6,15 @@
 #include <unistd.h>
 #include <arpa/inet.h>  // htons()
 #include <netinet/in.h> // struct sockaddr_in
+#include <sys/socket.h>
+#include <sys/time.h>
+
+#include "Tools/Shared/types.h"
+
+// this section should be in a header file
 
 #define PORT_NUMBER 25000
 #define MAX_CONN_QUEUE  3   // max number of connections the server can queue
-#define SERVER_ADDRESS  "127.0.0.1"
 
 // macro to simplify error handling
 #define ERROR_HELPER(ret, message)  do 									\
@@ -21,11 +26,24 @@
             }                                                           \
         } while (0)
 
-#typedef enum { FALSE, TRUE } bool_t
+typedef struct thread_args_s
+{
+    int sock_desc;
+    struct sockaddr_in* address;
+} conn_thread_args_t;
+
+// ---------------------------------------
 
 void* handler(void* arg)
 {
-	// TODO
+    conn_thread_args_t* args = (conn_thread_args_t*)arg;
+    int socketd = args->sock_desc;
+
+	struct timeval tv;
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+    setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
 }
 
 void server_intial_setup(int socket_desc)
@@ -77,13 +95,15 @@ int main(int argc, char* argv[])
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
 
-        // client_desc option settings TODO
-
+        
         pthread_t thread;
 
         // argument for thread ...
+        conn_thread_args_t* args = (conn_thread_args_t*)malloc(sizeof(conn_thread_args_t));
+        args->sock_desc = client_desc;
+        args->address = client_addr;
 
-        if (pthread_create(&thread, NULL, /* handler */, /* args */) != 0)
+        if (pthread_create(&thread, NULL, /* handler */, args) != 0)
         {
             fprintf(stderr, "Can't create a new thread, error %d\n", errno);
             exit(EXIT_FAILURE);
