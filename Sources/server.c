@@ -1,13 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <string.h> // strerror()
+#include <string.h>     /* strerror() and strlen() */
 #include <pthread.h>
 #include <unistd.h>
-#include <arpa/inet.h>  // htons()
-#include <netinet/in.h> // struct sockaddr_in
+#include <arpa/inet.h>  /* htons(), ntohs() and inet_ntop() */
+#include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 #include <sys/socket.h>
-#include <sys/time.h>
+#include <sys/time.h>   /* struct timeval */
 
 #include "Tools/Shared/types.h"
 #include "Tools/Shared/guid.h"
@@ -28,6 +28,39 @@ void send_to_client(int socket, char* buf)
     }
 }
 
+size_t recv_from_client(int socket, char* buf, size_t buf_len) 
+{
+    int ret;
+    int bytes_read = 0;
+
+    // messages longer than buf_len will be truncated
+    while (bytes_read <= buf_len) 
+    {        
+        ret = recv(socket, buf + bytes_read, 1, 0);
+        if (ret == 0) return -1;
+        ERROR_HELPER(ret, "Cannot read from socket!\n");
+        if (buf[bytes_read] == '\n') break;
+        if (bytes_read == buf_len)
+        {
+            buf[bytes_read] = '\n';
+            break;
+        }
+        bytes_read += ret;
+    }
+    buf[bytes_read] = '\0';
+    return bytes_read; // bytes_read == strlen(buf)
+}
+
+bool_t name_validation(char* name, size_t len)
+{
+    int i;
+    for (i = 0; i < len; i++)
+    {
+        if (name[i] == '|' || name[i] == '~') return FALSE;
+    }
+    return TRUE;
+}
+
 void* handler(void* arg)
 {
     // get handler arguments
@@ -38,6 +71,7 @@ void* handler(void* arg)
     // aux variables
     char buf[1024];
     size_t buf_len = sizeof(buf);
+    int i;
 
     // parse client IP address and port
     char client_ip[INET_ADDRSTRLEN];
@@ -48,12 +82,30 @@ void* handler(void* arg)
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
     send_to_client(socketd, buf);
 
-    // save the name chosen
-    char* name;
-    while ()
+    // save the name
+    size_t name_len = recv_from_client(socketd, buf, buf_len);
+    if (name_len == -1) // unexpected close of socket from client
     {
-        // TODO
+        int ret = close(socketd);
+        ERROR_HELPER(ret, "Errore nella chiusura di una socket");
+        free(args->address);
+        free(args);
+        pthread_exit(NULL);
     }
+    while (name_len == 0)
+    {
+        sprintf(buf, "Please choose a non-empty name: ");
+        send_to_client(socketd, buf);
+        name_len = recv_from_client(socketd, buf, buf_len);
+    }
+    while (!name_validation(buf, name_len))
+    {
+        sprintf(buf, "Please choose a name that not contains | or ~ character: ");
+        send_to_client(socketd, buf);
+        name_len = recv_from_client(socketd, buf, buf_len);
+    }
+    char name[name_len];
+    strcpy(name, buf); // name contains \0
 
     // send the generated guid to the client
     guid_t guid = new_guid();
