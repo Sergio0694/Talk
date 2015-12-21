@@ -10,27 +10,58 @@
 #include <sys/time.h>
 
 #include "Tools/Shared/types.h"
-#include "Tools/Server/users_list.h"
+#include "Tools/Shared/guid.h"
 #include "server.h"
 
-void* handler(void* arg)
+void send_to_client(int socket, char* buf)
 {
-    conn_thread_args_t* args = (conn_thread_args_t*)arg;
-    int socketd = args->sock_desc;
-    int ret;
-
-    // Welcome message
-    sprintf(buf, "Welcome to Talk");
-    int msg_len = strlen(buf);
     int sent_bytes = 0;
+    size_t msg_len = strlen(buf);
+    int ret;
     while (TRUE)
     {
-        ret = send(socketd, buf + sent_bytes, msg_len, 0);
+        ret = send(socket, buf + sent_bytes, msg_len, 0);
         if (ret == -1 && errno == EINTR) continue;
         ERROR_HELPER(ret, "Cannot send the message");
         sent_bytes += ret;
         if (sent_bytes == msg_len) break;
     }
+}
+
+void* handler(void* arg)
+{
+    // get handler arguments
+    conn_thread_args_t* args = (conn_thread_args_t*)arg;
+    int socketd = args->sock_desc;
+    struct sockaddr_in* client_addr = args->address;
+
+    // aux variables
+    char buf[1024];
+    size_t buf_len = sizeof(buf);
+
+    // parse client IP address and port
+    char client_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN);
+    uint16_t client_port = ntohs(client_addr->sin_port); // port number is an unsigned short
+
+    // Welcome message
+    sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
+    send_to_client(socketd, buf);
+
+    // save the name chosen
+    char* name;
+    while ()
+    {
+        // TODO
+    }
+
+    // send the generated guid to the client
+    guid_t guid = new_guid();
+    buf = serialize_guid(guid);
+    send_to_client(socketd, buf);
+
+    // add the user to users_list
+    add(users_list, name, guid, client_ip);
 
 	struct timeval tv;
     tv.tv_sec = 5;
