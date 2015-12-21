@@ -10,40 +10,32 @@
 #include <sys/time.h>
 
 #include "Tools/Shared/types.h"
-
-// this section should be in a header file
-
-#define PORT_NUMBER 25000
-#define MAX_CONN_QUEUE  3   // max number of connections the server can queue
-
-// macro to simplify error handling
-#define ERROR_HELPER(ret, message)  do 									\
-		{                                								\
-            if (ret < 0) 												\
-        	{                                              				\
-                fprintf(stderr, "%s: %s\n", message, strerror(errno));  \
-                exit(EXIT_FAILURE);                                     \
-            }                                                           \
-        } while (0)
-
-typedef struct thread_args_s
-{
-    int sock_desc;
-    struct sockaddr_in* address;
-} conn_thread_args_t;
-
-// ---------------------------------------
+#include "Tools/Server/users_list.h"
+#include "server.h"
 
 void* handler(void* arg)
 {
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int socketd = args->sock_desc;
+    int ret;
+
+    // Welcome message
+    sprintf(buf, "Welcome to Talk");
+    int msg_len = strlen(buf);
+    int sent_bytes = 0;
+    while (TRUE)
+    {
+        ret = send(socketd, buf + sent_bytes, msg_len, 0);
+        if (ret == -1 && errno == EINTR) continue;
+        ERROR_HELPER(ret, "Cannot send the message");
+        sent_bytes += ret;
+        if (sent_bytes == msg_len) break;
+    }
 
 	struct timeval tv;
     tv.tv_sec = 5;
     tv.tv_usec = 0;
     setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
 }
 
 void server_intial_setup(int socket_desc)
@@ -84,6 +76,7 @@ int main(int argc, char* argv[])
     ERROR_HELPER(socket_desc, "cannot open server socket");
 
     server_intial_setup(socket_desc);
+    users_list = create();
 
     // we allocate client_addr dynamically and initialize it to zero
     struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
