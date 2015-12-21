@@ -11,7 +11,7 @@
 #include "..\Shared\types.h"
 
 // =================== Public types ====================
-typedef listStruct* list_t;
+typedef struct listBase* list_t;
 
 // ==================== Functions ======================
 
@@ -29,7 +29,9 @@ list_t create();
 *    Deallocates a list and all its content
 *  Parameters:
 *    list ---> The list to destroy */
-void destroy(&list_t list);
+void destroy(list_t* list);
+
+int get_length(list_t list);
 
 /* =====================================================================
 *  Add
@@ -88,5 +90,7 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
 *    list ---> The input list
 *    guid ---> The GUID of the item to find */
 char* get_ip(const list_t list, guid_t guid);
+
+char* serialize_list(const list_t list);
 
 #endif

@@ -8,8 +8,6 @@
 #define TYPES_H
 
 // =================== Boolean type ====================
-#define 1 TRUE
-#define 0 FALSE
-typedef int bool_t;
+typedef enum { FALSE, TRUE } bool_t;
 
 #endif

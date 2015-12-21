@@ -8,14 +8,23 @@
 #define GUID_H
 
 // =================== Public types ====================
-typedef long long guid_t
+typedef struct guidStruct* guid_t;
 
 /* =====================================================================
 *  NewGuid
 *  =====================================================================
 *  Description:
-*    Generates a new, pseudo-random 64 bit GUID */
+*    Generates a new, pseudo-random 128 bit GUID */
 guid_t new_guid();
+
+/* =====================================================================
+*  PrintGUID
+*  =====================================================================
+*  Description:
+*    Prints a GUID using the hex format
+*  Parameters:
+*    guid ---> The GUID to print */
+void print_guid(guid_t guid);
 
 /* =====================================================================
 *  SerializeGUID

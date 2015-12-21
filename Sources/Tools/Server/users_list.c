@@ -2,9 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "users_list.h"
+#include "..\Shared\guid.h"
 
 /* ============================================================================
-*  Queue internal types
+*  List internal types
 *  ========================================================================= */
 
 // Single list node
@@ -56,11 +57,11 @@ list_t create()
 }
 
 // Destroy
-void destroy(&list_t list)
+void destroy(list_t* list)
 {
 	// Deallocate all the nodes in the list
 	nodePointer pointer = (*list)->head;
-	while (pointer != null)
+	while (pointer != NULL)
 	{
 		// Get a temp reference to the current node
 		nodePointer temp = pointer;
@@ -76,16 +77,10 @@ void destroy(&list_t list)
 	free(list);
 }
 
-char* serialize(list_t list)
+int get_length(list_t list)
 {
-	if (IS_EMPTY(list)) return NULL;
-	char* buffer = NULL;
-
-	nodePointer pointer = list->head;
-	while (pointer != NULL)
-	{
-
-	}
+	if (list == NULL) return -1;
+	return list->length;
 }
 
 // Add
@@ -178,7 +173,7 @@ static bool_t set_custom_flag(const list_t list, guid_t guid, bool_t target_valu
 static bool_t set_custom_flag(const list_t list, guid_t guid, bool_t target_value, bool_t first_flag)
 {
 	// Input check
-	VALID_LIST_CHECK(list);
+	if (IS_EMPTY(list)) return FALSE;
 
 	// Try to get the right item inside the list
 	nodePointer targetNode = get_node(list, guid);
@@ -218,8 +213,8 @@ char* get_ip(const list_t list, guid_t guid)
 	return pointer->ip;
 }
 
-const char internal_separator = "~";
-const char external_separator = "|";
+const char internal_separator = '~';
+const char external_separator = '|';
 
 // SerializeList
 char* serialize_list(const list_t list)
@@ -251,12 +246,17 @@ char* serialize_list(const list_t list)
 
 		// Serialize the GUID and copy it inside the buffer
 		char* serialized_guid = serialize_guid(pointer->guid);
+
+		printf("\n>> GUID: %s\n", serialized_guid);
 		strcpy(position + buffer + name_len + 1, serialized_guid);
 		free(serialized_guid);
 
 		// Add the final separator and update the current position
 		buffer[position + instance_len - 1] = external_separator;
 		position += instance_len;
+
+		// Move to the next item inside the list
+		pointer = pointer->next;
 	}
 	return buffer;
 }
