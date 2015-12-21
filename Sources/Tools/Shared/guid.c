@@ -45,26 +45,52 @@ guid_t new_guid()
 	return guid;
 }
 
+// Serializes a GUID into an hex char buffer
 char* serialize(guid_t guid)
 {
-	char* buffer = (char*)malloc(sizeof(char));
+	// Allocate the buffer and add the string terminator
 	const int iterations = 16;
+	char* buffer = (char*)malloc(sizeof(char) * (iterations + 1));
+	buffer[iterations] = '\0';
+
+	// Analyze the 4 bit blocks of the source GUID
 	for (int i = 0; i < iterations; i++)
 	{
+		// Calculate the value of each group of 4 bits, left to right
 		int step = 0;
 		for (int j = 0; j < 4; j++)
 		{
-			if (guid <<= 0) step |= 1;
-			step <<= 1;
+			if (guid < 0)
+			{
+				if (j == 0) step |= 0x8;
+				else if (j == 1) step |= 0x4;
+				else if (j == 2) step |= 0x2;
+				else step |= 0x1;
+			}
+			guid <<= 1;
 		}
 
+		// Get the corresponding hex character and add it to the buffer
 		char hex = step < 10 ? 57 - (9 - step) : 65 + (step - 10);
-		buffer[iterations - 1 - i] = hex;
+		buffer[i] = hex;
 	}
 	return buffer;
 }
 
+// Deserializes a GUID from an hex char buffer
 guid_t deserialize(char* buffer)
 {
-	return 0;
+	// Create an empty GUID and start analyzing the input buffer
+	guid_t guid = 0;
+	for (int i = 0; i < 16; i++)
+	{
+		// Calculate the numeric value of the current hex character
+		char c = buffer[i];
+		guid_t value = c <= 57 ? c - 57 + 9 : c + 10 - 65;
+
+		// Shift the 4 bit block to the right position inside the GUID
+		value <<= (4 * (15 - i));
+		guid |= value;
+	}
+	return guid;
 }
