@@ -7,6 +7,9 @@
 #ifndef USERS_LIST_H
 #define USERS_LIST_H
 
+#include "..\Shared\guid.h"
+#include "..\Shared\types.h"
+
 // =================== Public types ====================
 typedef listStruct* list_t;
 

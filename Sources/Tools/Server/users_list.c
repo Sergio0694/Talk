@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "users_list.h"
-#include "..\Shared\guid.h"
-#include "..\Shared\types.h"
 
 /* ============================================================================
 *  Queue internal types
@@ -217,4 +216,47 @@ char* get_ip(const list_t list, guid_t guid)
 
 	// If the GUID has been found, return the corresponding IP address
 	return pointer->ip;
+}
+
+const char internal_separator = "~";
+const char external_separator = "|";
+
+// SerializeList
+char* serialize_list(const list_t list)
+{
+	// Input check
+	if (IS_EMPTY(list)) return NULL;
+
+	// Initialize the buffer and the local variables
+	char* buffer = (char*)malloc(sizeof(char));
+	int total_len = 0, position = 0;
+
+	// Start iterating through the list
+	nodePointer pointer = list->head;
+	while (pointer != NULL)
+	{
+		// Get the length of the user name and its string terminator
+		int name_len = strlen(pointer->name) + 1;
+
+		// Item length: name + serialized GUID (17) + 2 separators
+		int instance_len = name_len + 19;
+		total_len += instance_len;
+
+		// Reallocate the buffer and copy the name of the current item
+		buffer = (char*)realloc(buffer, total_len);
+		strcpy(position + buffer, pointer->name);
+
+		// Add the internal separator
+		buffer[position + name_len] = internal_separator;
+
+		// Serialize the GUID and copy it inside the buffer
+		char* serialized_guid = serialize_guid(pointer->guid);
+		strcpy(position + buffer + name_len + 1, serialized_guid);
+		free(serialized_guid);
+
+		// Add the final separator and update the current position
+		buffer[position + instance_len - 1] = external_separator;
+		position += instance_len;
+	}
+	return buffer;
 }

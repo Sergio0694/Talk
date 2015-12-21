@@ -2,6 +2,7 @@
 #include <time.h>
 #include <inttypes.h>
 #include "guid.h"
+#include "types.h"
 
 // Generates a random 64 bit GUID
 guid_t new_guid()
@@ -46,7 +47,7 @@ guid_t new_guid()
 }
 
 // Serializes a GUID into an hex char buffer
-char* serialize(guid_t guid)
+char* serialize_guid(guid_t guid)
 {
 	// Allocate the buffer and add the string terminator
 	const int iterations = 16;
@@ -78,7 +79,7 @@ char* serialize(guid_t guid)
 }
 
 // Deserializes a GUID from an hex char buffer
-guid_t deserialize(char* buffer)
+guid_t deserialize_guid(char* buffer)
 {
 	// Create an empty GUID and start analyzing the input buffer
 	guid_t guid = 0;

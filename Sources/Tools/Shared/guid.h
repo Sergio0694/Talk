@@ -17,8 +17,22 @@ typedef long long guid_t
 *    Generates a new, pseudo-random 64 bit GUID */
 guid_t new_guid();
 
-char* serialize(guid_t guid);
+/* =====================================================================
+*  SerializeGUID
+*  =====================================================================
+*  Description:
+*    Serializes a GUID into an hex char buffer
+*  Parameters:
+*    guid ---> The GUID to serialize */
+char* serialize_guid(guid_t guid);
 
-guid_t deserialize(char* buffer);
+/* =====================================================================
+*  DeserializeGUID
+*  =====================================================================
+*  Description:
+*    Deserializes a GUID from an hex char buffer
+*  Parameters:
+*    buffer ---> The char buffer that contains the serialized GUID */
+guid_t deserialize_guid(char* buffer);
 
 #endif
