@@ -32,6 +32,11 @@ list_t create();
 *    list ---> The list to destroy */
 void destroy(list_t* list);
 
+/* =====================================================================
+*  GetLength
+*  =====================================================================
+*  Description:
+*    Returns the length of the input list */
 int get_length(list_t list);
 
 /* =====================================================================
@@ -44,7 +49,7 @@ int get_length(list_t list);
 *    name ---> The name of the new node 
 *    guid ---> The GUID of the new node
 *    ip ---> The IP of the new node */
-void add(list_t list, char* name, guid_t guid, char* ip);
+void add(list_t list, string_t name, guid_t guid, string_t ip);
 
 /* =====================================================================
 *  RemoveGUID
@@ -90,7 +95,7 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
 *  Parameters:
 *    list ---> The input list
 *    guid ---> The GUID of the item to find */
-char* get_ip(const list_t list, guid_t guid);
+string_t get_ip(const list_t list, guid_t guid);
 
 /* =====================================================================
 *  SerializeList

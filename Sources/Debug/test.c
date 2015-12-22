@@ -8,6 +8,11 @@
 
 void getch();
 
+void print_name(string_t name)
+{
+	printf("\n>>> %s", name);
+}
+
 int main()
 {
 	//string_t string = string_concat("ciao", "sergio");
@@ -15,16 +20,17 @@ int main()
 	//return 0;
 
 	list_t list = create();
-	guid_t guid = new_guid();
 	add(list, "Sergio Pedri", new_guid(), "127.0.0.1");
-	add(list, "Andrea Salvati", guid, "127.0.0.2");
+	add(list, "Andrea Salvati", new_guid(), "127.0.0.2");
 	add(list, "Camil Demetrescu", new_guid(), "127.0.0.3");
 	printf("Length: %d\n", get_length(list));
 	char* serialized = serialize_list(list);
-	printf("\n\n");
+	//printf("\n\n");
 	//puts(serialized);
 
-	deserialize_client_list(serialized, guid);
+	client_list_t test = deserialize_client_list(serialized, NULL);
+	printf("\nDESERIALIZED!");
+	print_list(test, print_name);
 	//getch();
 	return 0;
 }

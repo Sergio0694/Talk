@@ -76,6 +76,7 @@ void destroy(list_t* list)
 	free(list);
 }
 
+// Get length
 int get_length(list_t list)
 {
 	if (list == NULL) return -1;
@@ -83,7 +84,7 @@ int get_length(list_t list)
 }
 
 // Add
-void add(list_t list, char* name, guid_t guid, char* ip)
+void add(list_t list, string_t name, guid_t guid, string_t ip)
 {
 	// Allocate the new node and set its info
 	nodePointer node = (nodePointer)malloc(sizeof(listNode));
@@ -148,9 +149,7 @@ bool_t remove_guid(list_t list, guid_t guid)
 	return FALSE;
 }
 
-// Get node [helper function]
-static nodePointer get_node(list_t list, guid_t guid);
-
+// Get node
 static nodePointer get_node(list_t list, guid_t guid)
 {
 	// Iterate the target list
@@ -166,9 +165,7 @@ static nodePointer get_node(list_t list, guid_t guid)
 	return NULL;
 }
 
-// Sets a custom flag in a given node [helper function]
-static bool_t set_custom_flag(const list_t list, guid_t guid, bool_t target_value, bool_t first_flag);
-
+// Sets a custom flag in a given node
 static bool_t set_custom_flag(const list_t list, guid_t guid, bool_t target_value, bool_t first_flag)
 {
 	// Input check
@@ -199,7 +196,7 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value)
 }
 
 // Get IP address
-char* get_ip(const list_t list, guid_t guid)
+string_t get_ip(const list_t list, guid_t guid)
 {
 	// Input check
 	if (IS_EMPTY(list)) return NULL;
