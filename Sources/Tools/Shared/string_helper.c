@@ -2,12 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "string_helper.h"
+#include "types.h"
 
 // Creates an empty string
 string_t create_empty_string()
 {
 	string_t empty = (string_t)malloc(sizeof(char));
-	empty[0] = '\0';
+	empty[0] = STRING_TERMINATOR;
 	return empty;
 }
 

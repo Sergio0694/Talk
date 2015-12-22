@@ -212,10 +212,6 @@ char* get_ip(const list_t list, guid_t guid)
 	return pointer->ip;
 }
 
-// Separators
-const char internal_separator = '~';
-const char external_separator = '|';
-
 // SerializeList
 string_t serialize_list(const list_t list)
 {
@@ -242,7 +238,7 @@ string_t serialize_list(const list_t list)
 
 		// Clone the name and add the internal separator in the last position
 		string_t edited_name = string_clone(pointer->name);
-		edited_name[name_len - 1] = internal_separator;
+		edited_name[name_len - 1] = INTERNAL_SEPARATOR;
 
 		// Add it to the internal buffer, then free the copy
 		strcpy(internal_buffer, edited_name);
@@ -254,7 +250,7 @@ string_t serialize_list(const list_t list)
 		free(serialized_guid);
 
 		// Add the current string to the buffer
-		buffer = string_concat(buffer, internal_buffer, external_separator);
+		buffer = string_concat(buffer, internal_buffer, EXTERNAL_SEPARATOR);
 
 		// Move to the next item inside the list
 		pointer = pointer->next;

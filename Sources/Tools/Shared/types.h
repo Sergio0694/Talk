@@ -10,4 +10,11 @@
 // =================== Boolean type ====================
 typedef enum { FALSE, TRUE } bool_t;
 
+// ==================== Constants ======================
+#define STRING_TERMINATOR '\0'
+
+// ============ Serialization separators ===============
+#define INTERNAL_SEPARATOR '~'
+#define EXTERNAL_SEPARATOR '|'
+
 #endif

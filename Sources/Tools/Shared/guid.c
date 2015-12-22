@@ -104,13 +104,7 @@ static char* serialize_int64(int64_t value)
 		int step = 0;
 		for (int j = 0; j < 4; j++)
 		{
-			if (value < 0)
-			{
-				if (j == 0) step |= 0x8;
-				else if (j == 1) step |= 0x4;
-				else if (j == 2) step |= 0x2;
-				else step |= 0x1;
-			}
+			if (value < 0) step |= 1 << 3 - j;
 			value <<= 1;
 		}
 
@@ -133,7 +127,7 @@ char* serialize_guid(guid_t guid)
 	// Allocate the buffer and add the string terminator
 	const int iterations = 32;
 	char* buffer = (char*)malloc(sizeof(char) * (iterations + 1));
-	buffer[iterations] = '\0';
+	buffer[iterations] = STRING_TERMINATOR;
 
 	// Get the serialized buffers
 	char* time = serialize_int64(guid->time);
