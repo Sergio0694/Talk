@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "users_list.h"
-#include "..\Shared\guid.h"
 
 /* ============================================================================
 *  List internal types
@@ -11,11 +10,11 @@
 // Single list node
 struct listElem
 {
-	char* name;
+	string_t name;
 	guid_t guid;
 	bool_t available;
 	bool_t connection_requested;
-	char* ip;
+	string_t ip;
 	struct listElem* next;
 	struct listElem* previous;
 };
@@ -213,17 +212,18 @@ char* get_ip(const list_t list, guid_t guid)
 	return pointer->ip;
 }
 
+// Separators
 const char internal_separator = '~';
 const char external_separator = '|';
 
 // SerializeList
-char* serialize_list(const list_t list)
+string_t serialize_list(const list_t list)
 {
 	// Input check
-	if (IS_EMPTY(list)) return NULL;
+	if (IS_EMPTY(list)) return create_empty_string();
 
 	// Initialize the buffer and the local variables
-	char* buffer = (char*)malloc(sizeof(char));
+	string_t buffer = create_empty_string();
 	int total_len = 0, position = 0;
 
 	// Start iterating through the list
@@ -233,27 +233,28 @@ char* serialize_list(const list_t list)
 		// Get the length of the user name and its string terminator
 		int name_len = strlen(pointer->name) + 1;
 
-		// Item length: name + serialized GUID (17) + 2 separators
-		int instance_len = name_len + 19;
+		// Item length: name + serialized GUID (33) + separator/string terminator
+		int instance_len = name_len + 35;
 		total_len += instance_len;
 
-		// Reallocate the buffer and copy the name of the current item
-		buffer = (char*)realloc(buffer, total_len);
-		strcpy(position + buffer, pointer->name);
+		// Allocate the internal buffer
+		char* internal_buffer = (char*)malloc(sizeof(char) * instance_len);
 
-		// Add the internal separator
-		buffer[position + name_len] = internal_separator;
+		// Clone the name and add the internal separator in the last position
+		string_t edited_name = string_clone(pointer->name);
+		edited_name[name_len - 1] = internal_separator;
+
+		// Add it to the internal buffer, then free the copy
+		strcpy(internal_buffer, edited_name);
+		free(edited_name);
 
 		// Serialize the GUID and copy it inside the buffer
 		char* serialized_guid = serialize_guid(pointer->guid);
-
-		printf("\n>> GUID: %s\n", serialized_guid);
-		strcpy(position + buffer + name_len + 1, serialized_guid);
+		strcpy(internal_buffer + name_len, serialized_guid);
 		free(serialized_guid);
 
-		// Add the final separator and update the current position
-		buffer[position + instance_len - 1] = external_separator;
-		position += instance_len;
+		// Add the current string to the buffer
+		buffer = string_concat(buffer, internal_buffer, external_separator);
 
 		// Move to the next item inside the list
 		pointer = pointer->next;

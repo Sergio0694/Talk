@@ -1,4 +1,4 @@
-/* ============================================================================
+/* ===========================================================================
 *  guid.h
 * ============================================================================
 
@@ -7,8 +7,12 @@
 #ifndef GUID_H
 #define GUID_H
 
+#include "types.h"
+
 // =================== Public types ====================
 typedef struct guidStruct* guid_t;
+
+// ==================== Functions ======================
 
 /* =====================================================================
 *  NewGuid
@@ -16,6 +20,16 @@ typedef struct guidStruct* guid_t;
 *  Description:
 *    Generates a new, pseudo-random 128 bit GUID */
 guid_t new_guid();
+
+/* =====================================================================
+*  GUIDEquals
+*  =====================================================================
+*  Description:
+*    Checks if two GUIDs have the same value
+*  Parameters:
+*    this ---> The first GUID
+*    that ---> The second GUID to check */
+bool_t guid_equals(guid_t this, guid_t that);
 
 /* =====================================================================
 *  PrintGUID

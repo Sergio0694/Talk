@@ -16,6 +16,10 @@ struct guidStruct
 	int64_t random;
 };
 
+/* ============================================================================
+*  Generic functions
+*  ========================================================================= */
+
 // Generates a random 64 bit GUID
 guid_t new_guid()
 {
@@ -44,8 +48,15 @@ guid_t new_guid()
 	int64_time |= clock_time;
 	guid->time = int64_time;
 
+	// Only set the random feed at the first call
+	static bool_t first_call = TRUE;
+	if (first_call)
+	{
+		srand((unsigned)time(NULL));
+		first_call = FALSE;
+	}
+
 	// Fill the remaining bits with random padding
-	srand((unsigned)clock_backup);
 	int64_t random_bits = 0;
 	for (int i = 0; i < 63; i++)
 	{
@@ -59,6 +70,16 @@ guid_t new_guid()
 	return guid;
 }
 
+// Equals
+bool_t guid_equals(guid_t this, guid_t that)
+{
+	// Check if the two references are valid
+	if (this == NULL || that == NULL) return FALSE;
+
+	// Compare the two instances
+	return this->time == that->time && this->random == that->random;
+}
+
 // Print
 void print_guid(guid_t guid)
 {
@@ -67,17 +88,17 @@ void print_guid(guid_t guid)
 	free(buffer);
 }
 
-// Serializes a GUID into an hex char buffer
-char* serialize_guid(guid_t guid)
-{
-	// Allocate the buffer and add the string terminator
-	const int iterations = 32;
-	char* buffer = (char*)malloc(sizeof(char) * (iterations + 1));
-	buffer[iterations] = '\0';
+/* ============================================================================
+*  Serialization
+*  ========================================================================= */
 
-	// Analyze the 4 bit blocks of the source GUID
-	int64_t value = guid->time;
-	for (int i = 0; i < iterations; i++)
+// Serializes a single 64 bit number
+static char* serialize_int64(int64_t value)
+{
+	char* buffer = (char*)malloc(sizeof(char) * 16);
+
+	// Analyze the 4 bit blocks of the source 64 bit value
+	for (int i = 0; i < 16; i++)
 	{
 		// Calculate the value of each group of 4 bits, left to right
 		int step = 0;
@@ -96,17 +117,49 @@ char* serialize_guid(guid_t guid)
 		// Get the corresponding hex character and add it to the buffer
 		char hex = step < 10 ? 57 - (9 - step) : 65 + (step - 10);
 		buffer[i] = hex;
-
-		// Switch to the second part of the GUID if necessary
-		if (i == 16) value = guid->random;
 	}
 	return buffer;
 }
 
+// Copies a buffer inside another one
+static void copy_serialized_int64_buffer(const char* source, char* dest)
+{
+	for (int i = 0; i < 16; i++) dest[i] = source[i];
+}
+
+// Serializes a GUID into an hex char buffer
+char* serialize_guid(guid_t guid)
+{
+	// Allocate the buffer and add the string terminator
+	const int iterations = 32;
+	char* buffer = (char*)malloc(sizeof(char) * (iterations + 1));
+	buffer[iterations] = '\0';
+
+	// Get the serialized buffers
+	char* time = serialize_int64(guid->time);
+	char* random = serialize_int64(guid->random);
+	
+	// Concat them inside the main buffer
+	copy_serialized_int64_buffer(time, buffer);
+	copy_serialized_int64_buffer(random, buffer + 16);
+
+	// Free the temp buffers
+	free(time);
+	free(random);
+
+	// Return the serialized buffer
+	return buffer;
+}
+
+/* ============================================================================
+*  Deserialization
+*  ========================================================================= */
+
+// Deserializes a 64 bit value from a char buffer
 static int64_t deserialize_int64(char* buffer)
 {
 	// Create an empty GUID and start analyzing the input buffer
-	int64_t guid_part;
+	int64_t guid_part = 0;
 	for (int i = 0; i < 16; i++)
 	{
 		// Calculate the numeric value of the current hex character

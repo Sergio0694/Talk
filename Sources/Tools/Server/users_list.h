@@ -9,6 +9,7 @@
 
 #include "..\Shared\guid.h"
 #include "..\Shared\types.h"
+#include "..\Shared\string_helper.h"
 
 // =================== Public types ====================
 typedef struct listBase* list_t;
@@ -91,6 +92,14 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
 *    guid ---> The GUID of the item to find */
 char* get_ip(const list_t list, guid_t guid);
 
-char* serialize_list(const list_t list);
+/* =====================================================================
+*  SerializeList
+*  =====================================================================
+*  Description:
+*    Serializes the given list into a string. The function only 
+*    takes into account the name and the GUID of each entry.
+*  Parameters:
+*    list ---> The list to serialize */
+string_t serialize_list(const list_t list);
 
 #endif
