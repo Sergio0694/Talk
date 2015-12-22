@@ -1,8 +1,6 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include "Tools/Server/users_list.h"
-
 #define PORT_NUMBER 25000
 #define MAX_CONN_QUEUE  3   // max number of connections the server can queue
 
@@ -15,13 +13,5 @@
                 exit(EXIT_FAILURE);                                     \
             }                                                           \
         } while (0)
-
-typedef struct thread_args_s
-{
-    int sock_desc;
-    struct sockaddr_in* address;
-} conn_thread_args_t;
-
-list_t users_list;
 
 #endif

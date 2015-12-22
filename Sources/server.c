@@ -8,60 +8,28 @@
 #include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 #include <sys/socket.h>
 #include <sys/time.h>   /* struct timeval */
+#include <sys/types.h>
+#include <sys/ipc.h>    /* IPC_CREAT, IPC_EXCL, IPC_NOWAIT */
+#include <sys/sem.h>
+#include <signal.h>
 
 #include "Tools/Shared/types.h"
 #include "Tools/Shared/guid.h"
+#include "Tools/Server/users_list.h"
 #include "server.h"
+#include "server_util.h"
 
-void send_to_client(int socket, char* buf)
+/* ===== GLOBAL VARIABLES ===== */
+list_t users_list;
+
+typedef struct thread_args_s
 {
-    int sent_bytes = 0;
-    size_t msg_len = strlen(buf);
-    int ret;
-    while (TRUE)
-    {
-        ret = send(socket, buf + sent_bytes, msg_len, 0);
-        if (ret == -1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Cannot send the message");
-        sent_bytes += ret;
-        if (sent_bytes == msg_len) break;
-    }
-}
+    int sock_desc;
+    struct sockaddr_in* address;
+} conn_thread_args_t;
+/* ============================ */
 
-size_t recv_from_client(int socket, char* buf, size_t buf_len) 
-{
-    int ret;
-    int bytes_read = 0;
-
-    // messages longer than buf_len will be truncated
-    while (bytes_read <= buf_len) 
-    {        
-        ret = recv(socket, buf + bytes_read, 1, 0);
-        if (ret == 0) return -1;
-        ERROR_HELPER(ret, "Cannot read from socket!\n");
-        if (buf[bytes_read] == '\n') break;
-        if (bytes_read == buf_len)
-        {
-            buf[bytes_read] = '\n';
-            break;
-        }
-        bytes_read += ret;
-    }
-    buf[bytes_read] = '\0';
-    return bytes_read; // bytes_read == strlen(buf)
-}
-
-bool_t name_validation(char* name, size_t len)
-{
-    int i;
-    for (i = 0; i < len; i++)
-    {
-        if (name[i] == '|' || name[i] == '~') return FALSE;
-    }
-    return TRUE;
-}
-
-void* handler(void* arg)
+void* client_connection_handler(void* arg)
 {
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
@@ -71,6 +39,10 @@ void* handler(void* arg)
     // aux variables
     char buf[1024];
     size_t buf_len = sizeof(buf);
+    int ret;
+
+    // timeval struct for recv timeout
+    struct timeval tv;
 
     // parse client IP address and port
     char client_ip[INET_ADDRSTRLEN];
@@ -81,12 +53,20 @@ void* handler(void* arg)
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
     send_to_client(socketd, buf);
 
+    // set a 2 minutes timeout for choose the name
+    tv.tv_sec = 120;
+    tv.tv_usec = 0;
+    ret = setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
+    ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
+
     // save the name
     size_t name_len = recv_from_client(socketd, buf, buf_len);
-    if (name_len == -1) // unexpected close of socket from client
+    if (name_len < 0)
     {
+        if (name_len == TIME_OUT_EXPIRED) send_to_client(socketd, "I'm waiting too much");
+        // else unexpected close from client
         int ret = close(socketd);
-        ERROR_HELPER(ret, "Errore nella chiusura di una socket");
+        ERROR_HELPER(ret, "Error while closing the socket");
         free(args->address);
         free(args);
         pthread_exit(NULL);
@@ -118,45 +98,18 @@ void* handler(void* arg)
 
     // ######################################################
 
-	struct timeval tv;
+    // set a 5 seconds timeout for recv on client socket
     tv.tv_sec = 5;
     tv.tv_usec = 0;
-    setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-}
-
-void server_intial_setup(int socket_desc)
-{
-    int ret;
-
-    users_list = create();
-
-    // some fields are required to be filled with 0
-    struct sockaddr_in server_addr = {0};
-
-    int sockaddr_len = sizeof(struct sockaddr_in);
-
-    // initialize sockaddr_in fields
-    sockaddr_in.sin_family = AF_INET;
-    sockaddr_in.sin_port = htons(PORT_NUMBER);
-    sockaddr_in.sin_addr.s_addr = INADDR_ANY; // we want to accept connections from any interface
-
-    // We enable SO_REUSEADDR to quickly restart our server after a crash
-    int reuseaddr_opt = 1;
-    ret = setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_opt, sizeof(reuseaddr_opt));
-    ERROR_HELPER(ret, "Cannot set SO_REUSEADDR option");
-
-    // bind address to socket
-    ret = bind(socket_desc, (struct sockaddr*) &server_addr, sockaddr_len);
-    ERROR_HELPER(ret, "Cannot bind address to socket");
-
-    // start listening
-    ret = listen(socket_desc, MAX_CONN_QUEUE);
-    ERROR_HELPER(ret, "Cannot listen on socket");
+    ret = setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
+    ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 }
 
 int main(int argc, char* argv[])
 {
     int ret;
+
+    users_list = create();
 
     int socket_desc, client_desc;
 
@@ -182,7 +135,7 @@ int main(int argc, char* argv[])
         args->sock_desc = client_desc;
         args->address = client_addr;
 
-        if (pthread_create(&thread, NULL, /* handler */, args) != 0)
+        if (pthread_create(&thread, NULL, client_connection_handler, args) != 0)
         {
             fprintf(stderr, "Can't create a new thread, error %d\n", errno);
             exit(EXIT_FAILURE);
