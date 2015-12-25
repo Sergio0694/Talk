@@ -3,12 +3,12 @@
 #include <errno.h>
 #include <string.h>     /* strerror() and strlen() */
 #include <pthread.h>
-#include <unistd.h>
+#include <unistd.h>     /* probably not used - to be verified */
 #include <arpa/inet.h>  /* htons(), ntohs() and inet_ntop() */
 #include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 #include <sys/socket.h>
 #include <sys/time.h>   /* struct timeval */
-#include <sys/types.h>
+#include <sys/types.h>  /* key_t, pthread_t */
 #include <sys/ipc.h>    /* IPC_CREAT, IPC_EXCL, IPC_NOWAIT */
 #include <sys/sem.h>
 #include <signal.h>
@@ -20,13 +20,13 @@
 #include "server_util.h"
 
 /* ===== GLOBAL VARIABLES ===== */
-list_t users_list;
-
 typedef struct thread_args_s
 {
     int sock_desc;
     struct sockaddr_in* address;
 } conn_thread_args_t;
+
+list_t users_list;
 /* ============================ */
 
 void* client_connection_handler(void* arg)
@@ -49,6 +49,17 @@ void* client_connection_handler(void* arg)
     inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN);
     uint16_t client_port = ntohs(client_addr->sin_port); // port number is an unsigned short
 
+    // configure the SIGPIPE handler
+    sigset_t set;
+    ret = sigfillset(&set); // all signal will be blocked
+    ERROR_HELPER(ret, "Cannot fill the sigset");
+    struct sigaction sigact;
+    sigact.sa_handler = /* some defined handler */;
+    sigact.sa_mask = set; // the handler cannot be interrupted
+    sigact.sa_flags = /* I don't know now */;
+    ret = sigaction(SIGPIPE, &sigact, NULL); // don't care about the old sigact
+    ERROR_HELPER(ret, "Cannot change signal disposition");
+
     // Welcome message
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
     send_to_client(socketd, buf);
@@ -60,13 +71,13 @@ void* client_connection_handler(void* arg)
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
     // save the name
-    size_t name_len = recv_from_client(socketd, buf, buf_len);
+    int name_len = recv_from_client(socketd, buf, buf_len);
     if (name_len < 0)
     {
         if (name_len == TIME_OUT_EXPIRED) send_to_client(socketd, "I'm waiting too much");
         // else unexpected close from client
-        int ret = close(socketd);
-        ERROR_HELPER(ret, "Error while closing the socket");
+        int ret = close(args->socket);
+        ERROR_HELPER(ret, "Errore nella chiusura di una socket");
         free(args->address);
         free(args);
         pthread_exit(NULL);
@@ -98,6 +109,10 @@ void* client_connection_handler(void* arg)
 
     // ######################################################
 
+    // send the serialized users list to the client
+    buf = serialize_list(users_list);
+    send_to_client(socketd, buf);
+
     // set a 5 seconds timeout for recv on client socket
     tv.tv_sec = 5;
     tv.tv_usec = 0;
@@ -105,7 +120,7 @@ void* client_connection_handler(void* arg)
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 }
 
-int main(int argc, char* argv[])
+int main()
 {
     int ret;
 

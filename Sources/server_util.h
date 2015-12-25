@@ -5,7 +5,7 @@
 
 void send_to_client(int socket, char* buf);
 
-size_t recv_from_client(int socket, char* buf, size_t buf_len);
+int recv_from_client(int socket, char* buf, size_t buf_len);
 
 bool_t name_validation(char* name, size_t len);
 

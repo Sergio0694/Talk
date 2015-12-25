@@ -9,7 +9,6 @@
 
 void send_to_client(int socket, char* buf)
 {
-    // TODO -- must handle SIGPIPE
     int sent_bytes = 0;
     size_t msg_len = strlen(buf);
     int ret;
@@ -23,7 +22,7 @@ void send_to_client(int socket, char* buf)
     }
 }
 
-size_t recv_from_client(int socket, char* buf, size_t buf_len) 
+int recv_from_client(int socket, char* buf, size_t buf_len) 
 {
     int ret;
     int bytes_read = 0;
@@ -32,19 +31,14 @@ size_t recv_from_client(int socket, char* buf, size_t buf_len)
     while (bytes_read <= buf_len) 
     {        
         ret = recv(socket, buf + bytes_read, 1, 0);
-        // timeout expired
-        if (ret == 0 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED;
+        if (ret == 0 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED; // timeout expired
         if (ret == 0) return -1; // unexpected close from client
         ERROR_HELPER(ret, "Cannot read from socket!\n");
         if (buf[bytes_read] == '\n') break;
-        if (bytes_read == buf_len)
-        {
-            buf[bytes_read] = '\n';
-            break;
-        }
+        if (bytes_read == buf_len) break;
         bytes_read += ret;
     }
-    buf[bytes_read] = '\0';
+    buf[bytes_read] = STRING_TERMINATOR;
     return bytes_read; // bytes_read == strlen(buf)
 }
 
@@ -53,7 +47,7 @@ bool_t name_validation(char* name, size_t len)
     int i;
     for (i = 0; i < len; i++)
     {
-        if (name[i] == '|' || name[i] == '~') return FALSE;
+        if (name[i] == EXTERNAL_SEPARATOR || name[i] == INTERNAL_SEPARATOR) return FALSE;
     }
     return TRUE;
 }
