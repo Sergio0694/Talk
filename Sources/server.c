@@ -23,10 +23,24 @@
 typedef struct thread_args_s
 {
     int sock_desc;
+    int semid;
     struct sockaddr_in* address;
 } conn_thread_args_t;
 
 list_t users_list;
+
+// used in calls to semctl()
+#ifdef _SEM_SEMUN_UNDEFINED
+    union semun
+    {
+        int val;
+        struct semid_ds* buf;
+        unsigned short* array;
+    #if defined(__linux__)
+        struct seminfo* __buf;
+    #endif
+    };
+#endif
 /* ============================ */
 
 void* client_connection_handler(void* arg)
@@ -34,6 +48,7 @@ void* client_connection_handler(void* arg)
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int socketd = args->sock_desc;
+    int semid = args->semid;
     struct sockaddr_in* client_addr = args->address;
 
     // aux variables
@@ -104,8 +119,24 @@ void* client_connection_handler(void* arg)
 
     // ###### critical section here - semaphore needed ######
 
+    // sem_num = 0 --> operate on semaphore 0
+    // sem_op = 0 --> wait for value to equal 0
+    struct sembuf sop = { 0 };
+    ret = semop(semid, &sop, 1);
+    ERROR_HELPER(ret, "Cannot operate on semaphore");
+
+    // if we are here sem value is equal to 0 -- increment it
+    sop.sem_op = 1;
+    ret = semop(semid, &sop, 1);
+    ERROR_HELPER(ret, "Cannot operate on semaphore");
+
     // add the user to users_list
     add(users_list, name, guid, client_ip);
+
+    // make available the users_list
+    sop.sem_op = -1;
+    ret = semop(semid, &sop, 1);
+    ERROR_HELPER(ret, "Cannot operate on semaphore");
 
     // ######################################################
 
@@ -122,16 +153,27 @@ void* client_connection_handler(void* arg)
 
 int main()
 {
+    // aux var
     int ret;
-
-    users_list = create();
-
     int socket_desc, client_desc;
 
+    // server setup
+    users_list = create();
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
     ERROR_HELPER(socket_desc, "cannot open server socket");
-
     server_intial_setup(socket_desc);
+
+    /* ==== semaphore creation and initialization ==== */
+
+    // create the semaphore
+    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, 0660);
+    ERROR_HELPER(semid, "Error in semaphore creation");
+
+    // initialize the semaphore to 0
+    struct semun arg;
+    arg.val = 0;
+    ret = semctl(semid, 0, SETVAL, arg);
+    ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     // we allocate client_addr dynamically and initialize it to zero
     struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
@@ -145,9 +187,10 @@ int main()
         
         pthread_t thread;
 
-        // argument for thread ...
+        // argument for thread
         conn_thread_args_t* args = (conn_thread_args_t*)malloc(sizeof(conn_thread_args_t));
         args->sock_desc = client_desc;
+        args->semid = semid;
         args->address = client_addr;
 
         if (pthread_create(&thread, NULL, client_connection_handler, args) != 0)
