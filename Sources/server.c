@@ -33,11 +33,11 @@ list_t users_list;
 #ifdef _SEM_SEMUN_UNDEFINED
     union semun
     {
-        int val;
-        struct semid_ds* buf;
-        unsigned short* array;
+        int val;                /* value for SETVAL */
+        struct semid_ds* buf;   /* buffer for IPC_STAT, IPC_SET */
+        unsigned short* array;  /* array for GETALL, SETALL */
     #if defined(__linux__)
-        struct seminfo* __buf;
+        struct seminfo* __buf; /* buffer for IPC_INFO (linux-specific) */
     #endif
     };
 #endif
