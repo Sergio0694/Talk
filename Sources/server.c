@@ -99,13 +99,13 @@ void* client_connection_handler(void* arg)
     }
     while (name_len == 0)
     {
-        sprintf(buf, "Please choose a non-empty name: ");
+        sprintf(buf, "0Please choose a non-empty name: ");
         send_to_client(socketd, buf);
         name_len = recv_from_client(socketd, buf, buf_len);
     }
     while (!name_validation(buf, name_len))
     {
-        sprintf(buf, "Please choose a name that not contains | or ~ character: ");
+        sprintf(buf, "0Please choose a name that not contains | or ~ character: ");
         send_to_client(socketd, buf);
         name_len = recv_from_client(socketd, buf, buf_len);
     }
@@ -114,7 +114,8 @@ void* client_connection_handler(void* arg)
 
     // send the generated guid to the client
     guid_t guid = new_guid();
-    buf = serialize_guid(guid);
+    char* serialized_guid = serialize_guid(guid);
+	sprintf(buf, "1%s", serialized_guid);
     send_to_client(socketd, buf);
 
     // ###### critical section here - semaphore needed ######

@@ -39,7 +39,7 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
         bytes_read += ret;
     }
     buf[bytes_read] = STRING_TERMINATOR;
-    return bytes_read; // bytes_read == strlen(buf)
+    return bytes_read;
 }
 
 bool_t name_validation(char* name, size_t len)
