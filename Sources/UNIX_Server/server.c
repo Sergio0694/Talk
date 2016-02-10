@@ -13,9 +13,9 @@
 #include <sys/sem.h>
 #include <signal.h>
 
-#include "Tools/Shared/types.h"
-#include "Tools/Shared/guid.h"
-#include "Tools/Server/users_list.h"
+#include "../Tools/Shared/types.h"
+#include "../Tools/Shared/guid.h"
+#include "../Tools/Server/users_list.h"
 #include "server.h"
 #include "server_util.h"
 
@@ -43,6 +43,54 @@ list_t users_list;
 #endif
 /* ============================ */
 
+/* ===== PRIVATE FUNCTIONS ===== */
+
+static void close_and_cleanup(conn_thread_args_t* args)
+{
+	int socketd = args->sock_desc;
+	struct sockaddr_in* client_addr = args->address;
+
+	int ret = close(socketd);
+	ERROR_HELPER(ret, "Errore nella chiusura di una socket");
+	free(client_addr);
+	free(args);
+	pthread_exit(NULL);
+}
+
+static char* name_pickup(conn_thread_args_t* args, int* name_len)
+{
+	char buf[1024];
+	size_t buf_len = sizeof(buf);
+
+	int socketd = args->sock_desc;
+
+	*name_len = recv_from_client(socketd, buf, buf_len);
+	if (*name_len < 0)
+	{
+		if (name_len == TIME_OUT_EXPIRED) send_to_client(socketd, "I'm waiting too much");
+		// else unexpected close from client
+		close_and_cleanup(args);
+	}
+	while (*name_len == 0)
+	{
+		sprintf(buf, "0Please choose a non-empty name: ");
+		send_to_client(socketd, buf);
+		if (errno == EPIPE) close_and_cleanup(args);
+		*name_len = recv_from_client(socketd, buf, buf_len);
+	}
+	while (!name_validation(buf, *name_len))
+	{
+		sprintf(buf, "0Please choose a name that not contains | or ~ character: ");
+		send_to_client(socketd, buf);
+		if (errno == EPIPE) close_and_cleanup(args);
+		*name_len = recv_from_client(socketd, buf, buf_len);
+	}
+
+	return buf;
+}
+
+/* ============================= */
+
 void* client_connection_handler(void* arg)
 {
     // get handler arguments
@@ -62,22 +110,12 @@ void* client_connection_handler(void* arg)
     // parse client IP address and port
     char client_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN);
-    uint16_t client_port = ntohs(client_addr->sin_port); // port number is an unsigned short
-
-    // configure the SIGPIPE handler
-    sigset_t set;
-    ret = sigfillset(&set); // all signal will be blocked
-    ERROR_HELPER(ret, "Cannot fill the sigset");
-    struct sigaction sigact;
-    sigact.sa_handler = /* some defined handler */;
-    sigact.sa_mask = set; // the handler cannot be interrupted
-    sigact.sa_flags = /* I don't know now */;
-    ret = sigaction(SIGPIPE, &sigact, NULL); // don't care about the old sigact
-    ERROR_HELPER(ret, "Cannot change signal disposition");
+    uint16_t client_port = ntohs(client_addr->sin_port);
 
     // Welcome message
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
     send_to_client(socketd, buf);
+	if (errno == EPIPE) close_and_cleanup(args);
 
     // set a 2 minutes timeout for choose the name
     tv.tv_sec = 120;
@@ -86,56 +124,35 @@ void* client_connection_handler(void* arg)
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
     // save the name
-    int name_len = recv_from_client(socketd, buf, buf_len);
-    if (name_len < 0)
-    {
-        if (name_len == TIME_OUT_EXPIRED) send_to_client(socketd, "I'm waiting too much");
-        // else unexpected close from client
-        int ret = close(args->socket);
-        ERROR_HELPER(ret, "Errore nella chiusura di una socket");
-        free(args->address);
-        free(args);
-        pthread_exit(NULL);
-    }
-    while (name_len == 0)
-    {
-        sprintf(buf, "0Please choose a non-empty name: ");
-        send_to_client(socketd, buf);
-        name_len = recv_from_client(socketd, buf, buf_len);
-    }
-    while (!name_validation(buf, name_len))
-    {
-        sprintf(buf, "0Please choose a name that not contains | or ~ character: ");
-        send_to_client(socketd, buf);
-        name_len = recv_from_client(socketd, buf, buf_len);
-    }
+	size_t name_len;
+	buf = name_pickup(args, &name_len);
     char name[name_len];
-    strcpy(name, buf); // name contains \0
+    strncpy(name, buf, name_len); // name contains \0
 
     // send the generated guid to the client
     guid_t guid = new_guid();
     char* serialized_guid = serialize_guid(guid);
 	sprintf(buf, "1%s", serialized_guid);
     send_to_client(socketd, buf);
+	if (errno == EPIPE) close_and_cleanup(args);
 
     // ###### critical section here - semaphore needed ######
 
     // sem_num = 0 --> operate on semaphore 0
-    // sem_op = 0 --> wait for value to equal 0
+    // sem_op = -1 --> decrement the semaphore value, wait if is 0
     struct sembuf sop = { 0 };
+    sop.semop = -1;
     ret = semop(semid, &sop, 1);
     ERROR_HELPER(ret, "Cannot operate on semaphore");
 
-    // if we are here sem value is equal to 0 -- increment it
-    sop.sem_op = 1;
-    ret = semop(semid, &sop, 1);
-    ERROR_HELPER(ret, "Cannot operate on semaphore");
+    /* if we are here sem value is equal to 0
+     * all other threads wait until the semaphore will be incremented */
 
     // add the user to users_list
     add(users_list, name, guid, client_ip);
 
-    // make available the users_list
-    sop.sem_op = -1;
+    // make the users_list available
+    sop.sem_op = 1;
     ret = semop(semid, &sop, 1);
     ERROR_HELPER(ret, "Cannot operate on semaphore");
 
@@ -144,6 +161,7 @@ void* client_connection_handler(void* arg)
     // send the serialized users list to the client
     buf = serialize_list(users_list);
     send_to_client(socketd, buf);
+	if (errno == EPIPE) close_and_cleanup(args);
 
     // set a 5 seconds timeout for recv on client socket
     tv.tv_sec = 5;
@@ -170,11 +188,13 @@ int main()
     int semid = semget(IPC_PRIVATE, /* semnum = */ 1, 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
-    // initialize the semaphore to 0
+    // initialize the semaphore to 1
     struct semun arg;
-    arg.val = 0;
+    arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
+
+	/* =============================================== */
 
     // we allocate client_addr dynamically and initialize it to zero
     struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
@@ -185,6 +205,11 @@ int main()
     	client_desc = accept(socket_desc, (struct sockaddr*) client_addr, (socklen_t*) &sockaddr_len);
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
+
+		// preventing the generation of SIGPIPE on the client socket -- an EPIPE will be generated instead
+		int set = 1;
+		ret = setsockopt(client_desc, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
+		ERROR_HELPER(ret, "Cannot set SO_REUSEADDR option");
         
         pthread_t thread;
 

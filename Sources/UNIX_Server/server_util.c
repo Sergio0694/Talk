@@ -5,7 +5,7 @@
 
 #include "server.h"
 #include "server_util.h"
-#include "Tools/Shared/types.h"
+#include "../Tools/Shared/types.h"
 
 void send_to_client(int socket, char* buf)
 {
