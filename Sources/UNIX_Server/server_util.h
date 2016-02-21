@@ -3,6 +3,8 @@
 
 #define TIME_OUT_EXPIRED -2
 
+#include "../Tools/Shared/types.h"
+
 void send_to_client(int socket, char* buf);
 
 int recv_from_client(int socket, char* buf, size_t buf_len);

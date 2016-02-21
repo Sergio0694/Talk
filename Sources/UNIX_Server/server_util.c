@@ -2,10 +2,10 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 
 #include "server.h"
 #include "server_util.h"
-#include "../Tools/Shared/types.h"
 
 void send_to_client(int socket, char* buf)
 {
@@ -62,9 +62,9 @@ void server_intial_setup(int socket_desc)
     int sockaddr_len = sizeof(struct sockaddr_in);
 
     // initialize sockaddr_in fields
-    sockaddr_in.sin_family = AF_INET;
-    sockaddr_in.sin_port = htons(PORT_NUMBER);
-    sockaddr_in.sin_addr.s_addr = INADDR_ANY; // we want to accept connections from any interface
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT_NUMBER);
+    server_addr.sin_addr.s_addr = INADDR_ANY; // we want to accept connections from any interface
 
     // We enable SO_REUSEADDR to quickly restart our server after a crash
     int reuseaddr_opt = 1;

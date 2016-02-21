@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <errno.h>
 #include <string.h>     /* strerror() and strlen() */
 #include <pthread.h>
@@ -13,9 +11,9 @@
 #include <sys/sem.h>
 #include <signal.h>
 
-#include "../Tools/Shared/types.h"
 #include "../Tools/Shared/guid.h"
 #include "../Tools/Server/users_list.h"
+#include "../Tools/Shared/string_helper.h"
 #include "server.h"
 #include "server_util.h"
 
@@ -30,17 +28,16 @@ typedef struct thread_args_s
 list_t users_list;
 
 // used in calls to semctl()
-#ifdef _SEM_SEMUN_UNDEFINED
-    union semun
-    {
-        int val;                /* value for SETVAL */
-        struct semid_ds* buf;   /* buffer for IPC_STAT, IPC_SET */
-        unsigned short* array;  /* array for GETALL, SETALL */
-    #if defined(__linux__)
-        struct seminfo* __buf; /* buffer for IPC_INFO (linux-specific) */
-    #endif
-    };
+
+union semun
+{
+    int val;                /* value for SETVAL */
+    struct semid_ds* buf;   /* buffer for IPC_STAT, IPC_SET */
+    unsigned short* array;  /* array for GETALL, SETALL */
+#if defined(__linux__)
+    struct seminfo* __buf; /* buffer for IPC_INFO (linux-specific) */
 #endif
+};
 /* ============================ */
 
 /* ===== PRIVATE FUNCTIONS ===== */
@@ -57,7 +54,7 @@ static void close_and_cleanup(conn_thread_args_t* args)
 	pthread_exit(NULL);
 }
 
-static char* name_pickup(conn_thread_args_t* args, int* name_len)
+static void name_pickup(conn_thread_args_t* args, int* name_len, char* name)
 {
 	char buf[1024];
 	size_t buf_len = sizeof(buf);
@@ -67,7 +64,7 @@ static char* name_pickup(conn_thread_args_t* args, int* name_len)
 	*name_len = recv_from_client(socketd, buf, buf_len);
 	if (*name_len < 0)
 	{
-		if (name_len == TIME_OUT_EXPIRED) send_to_client(socketd, "I'm waiting too much");
+		if (*name_len == TIME_OUT_EXPIRED) send_to_client(socketd, "I'm waiting too much");
 		// else unexpected close from client
 		close_and_cleanup(args);
 	}
@@ -85,8 +82,8 @@ static char* name_pickup(conn_thread_args_t* args, int* name_len)
 		if (errno == EPIPE) close_and_cleanup(args);
 		*name_len = recv_from_client(socketd, buf, buf_len);
 	}
-
-	return buf;
+	name = (char*)malloc(sizeof(char) * (*name_len));
+	name = buf;
 }
 
 /* ============================= */
@@ -100,15 +97,15 @@ void* client_connection_handler(void* arg)
     struct sockaddr_in* client_addr = args->address;
 
     // aux variables
-    char buf[1024];
+    char buf[1024], client_ip[INET_ADDRSTRLEN];
     size_t buf_len = sizeof(buf);
-    int ret;
+    int ret, name_len;
+    string_t temp, name;
 
     // timeval struct for recv timeout
     struct timeval tv;
 
     // parse client IP address and port
-    char client_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN);
     uint16_t client_port = ntohs(client_addr->sin_port);
 
@@ -124,15 +121,12 @@ void* client_connection_handler(void* arg)
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
     // save the name
-	size_t name_len;
-	buf = name_pickup(args, &name_len);
-    char name[name_len];
-    strncpy(name, buf, name_len); // name contains \0
+	name_pickup(args, &name_len, name);
 
     // send the generated guid to the client
     guid_t guid = new_guid();
-    char* serialized_guid = serialize_guid(guid);
-	sprintf(buf, "1%s", serialized_guid);
+    temp = serialize_guid(guid);
+	sprintf(buf, "1%s", temp);
     send_to_client(socketd, buf);
 	if (errno == EPIPE) close_and_cleanup(args);
 
@@ -141,7 +135,7 @@ void* client_connection_handler(void* arg)
     // sem_num = 0 --> operate on semaphore 0
     // sem_op = -1 --> decrement the semaphore value, wait if is 0
     struct sembuf sop = { 0 };
-    sop.semop = -1;
+    sop.sem_op = -1;
     ret = semop(semid, &sop, 1);
     ERROR_HELPER(ret, "Cannot operate on semaphore");
 
@@ -159,7 +153,8 @@ void* client_connection_handler(void* arg)
     // ######################################################
 
     // send the serialized users list to the client
-    buf = serialize_list(users_list);
+    temp = serialize_list(users_list);
+    sprintf(buf, "%s", temp);
     send_to_client(socketd, buf);
 	if (errno == EPIPE) close_and_cleanup(args);
 
@@ -175,6 +170,7 @@ int main()
     // aux var
     int ret;
     int socket_desc, client_desc;
+    int sockaddr_len = sizeof(struct sockaddr_in);
 
     // server setup
     users_list = create();
@@ -189,12 +185,15 @@ int main()
     ERROR_HELPER(semid, "Error in semaphore creation");
 
     // initialize the semaphore to 1
-    struct semun arg;
+    union semun arg;
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
 	/* =============================================== */
+
+    // preventing the generation of SIGPIPE -- an EPIPE will be generated instead
+    signal(SIGPIPE, SIG_IGN);
 
     // we allocate client_addr dynamically and initialize it to zero
     struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
@@ -202,15 +201,10 @@ int main()
     while(TRUE)
     {
     	// accept incoming connection
-    	client_desc = accept(socket_desc, (struct sockaddr*) client_addr, (socklen_t*) &sockaddr_len);
+    	client_desc = accept(socket_desc, (struct sockaddr*)client_addr, (socklen_t*)&sockaddr_len);
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
 
-		// preventing the generation of SIGPIPE on the client socket -- an EPIPE will be generated instead
-		int set = 1;
-		ret = setsockopt(client_desc, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
-		ERROR_HELPER(ret, "Cannot set SO_REUSEADDR option");
-        
         pthread_t thread;
 
         // argument for thread

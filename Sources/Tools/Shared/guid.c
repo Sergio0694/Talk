@@ -58,7 +58,8 @@ guid_t new_guid()
 
 	// Fill the remaining bits with random padding
 	int64_t random_bits = 0;
-	for (int i = 0; i < 63; i++)
+	int i;
+	for (i = 0; i < 63; i++)
 	{
 		// Calculate and add a new random bit
 		if (rand() % 2) random_bits |= 1;
@@ -96,13 +97,14 @@ void print_guid(guid_t guid)
 static char* serialize_int64(int64_t value)
 {
 	char* buffer = (char*)malloc(sizeof(char) * 16);
+	int i, j;
 
 	// Analyze the 4 bit blocks of the source 64 bit value
-	for (int i = 0; i < 16; i++)
+	for (i = 0; i < 16; i++)
 	{
 		// Calculate the value of each group of 4 bits, left to right
 		int step = 0;
-		for (int j = 0; j < 4; j++)
+		for (j = 0; j < 4; j++)
 		{
 			if (value < 0) step |= 1 << 3 - j;
 			value <<= 1;
@@ -118,7 +120,8 @@ static char* serialize_int64(int64_t value)
 // Copies a buffer inside another one
 static void copy_serialized_int64_buffer(const char* source, char* dest)
 {
-	for (int i = 0; i < 16; i++) dest[i] = source[i];
+	int i;
+	for (i = 0; i < 16; i++) dest[i] = source[i];
 }
 
 // Serializes a GUID into an hex char buffer
@@ -154,7 +157,8 @@ static int64_t deserialize_int64(char* buffer)
 {
 	// Create an empty GUID and start analyzing the input buffer
 	int64_t guid_part = 0;
-	for (int i = 0; i < 16; i++)
+	int i;
+	for (i = 0; i < 16; i++)
 	{
 		// Calculate the numeric value of the current hex character
 		char c = buffer[i];
