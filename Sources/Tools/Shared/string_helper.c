@@ -43,7 +43,8 @@ string_t string_concat(string_t s1, string_t s2, char separator)
 string_t string_clone(string_t source)
 {
 	int len = strlen(source) + 1;
+	int i;
 	string_t out = (string_t)malloc(sizeof(char) * len);
-	for (int i = 0; i < len; i++) out[i] = source[i];
+	for (i = 0; i < len; i++) out[i] = source[i];
 	return out;
 }
