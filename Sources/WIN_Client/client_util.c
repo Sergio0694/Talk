@@ -1,4 +1,8 @@
+#include <Winsock2.h>
+#include <string.h>
+
 #include "client_util.h"
+#include "..\Tools\Shared\types.h"
 
 /* ============================================================================
 *  Generic functions
@@ -16,7 +20,7 @@ void send_to_server(SOCKET socket, char* buf)
 		int ret = send(socket, buf + sent_bytes, msg_len, 0);
 
 		// Continue in case of an interrupt
-		if (ret == -1 && GetLastError() == WSAEINTR) continue;
+		if (ret == -1 && WSAGetLastError() == WSAEINTR) continue;
 
 		// Check for errors
 		ERROR_HELPER(ret, "Cannot send the message");

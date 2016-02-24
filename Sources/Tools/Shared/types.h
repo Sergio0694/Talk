@@ -8,7 +8,9 @@
 #define TYPES_H
 
 // =================== Boolean type ====================
-typedef enum { FALSE, TRUE } bool_t;
+typedef int bool_t;
+#define TRUE 1
+#define FALSE 0
 
 // ==================== Constants ======================
 #define STRING_TERMINATOR '\0'

@@ -28,7 +28,6 @@ typedef struct thread_args_s
 list_t users_list;
 
 // used in calls to semctl()
-
 union semun
 {
     int val;                /* value for SETVAL */

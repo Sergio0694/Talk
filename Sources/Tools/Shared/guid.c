@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <inttypes.h>
+
 #include "guid.h"
 #include "types.h"
 

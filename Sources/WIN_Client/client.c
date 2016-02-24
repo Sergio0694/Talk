@@ -1,7 +1,8 @@
-#include <stdio.h>
 #include <stdlib.h>
+#include <winsock2.h>
 #include <Windows.h>
 #include <Ws2tcpip.h> /* InetPton */
+
 #include "client_util.h"
 #include "..\Tools\Client\client_list.h"
 #include "..\Tools\Shared\guid.h"
@@ -33,9 +34,9 @@ static void initialize_socket_API()
 static SOCKET create_socket()
 {
 	// Finally try to create the socket
-	SOCKET socket = socket(AF_INET, SOCK_STREAM, 0);
-	ERROR_HELPER(socket == INVALID_SOCKET, "There was an error while creating the socket");
-	return socket;
+	SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+	ERROR_HELPER(sock == INVALID_SOCKET, "There was an error while creating the socket");
+	return sock;
 }
 
 // Creates a sockaddr_in struct with the server address
@@ -47,9 +48,7 @@ static struct sockaddr_in get_socket_address()
 	server_addr.sin_port = htons(PORT_NUMBER);
 
 	// Get the IP address in network byte order
-	struct addr_in inner_addr = { 0 };
-	bool_t ret = InetPton(AF_INET, (PCTSTR)TEXT(SERVER_IP), (LPVOID)&inner_addr);
-	ERROR_HELPER(!ret, "There was an error while converting the server IP address");
+	u_long inner_addr = inet_addr(SERVER_IP);
 	server_addr.sin_addr.s_addr = inner_addr;
 	return server_addr;
 }
@@ -57,6 +56,8 @@ static struct sockaddr_in get_socket_address()
 // Logins into the server with a new username
 static void choose_name(SOCKET socket)
 {
+	int ret;
+
 	// Allocate the buffers to use
 	char buffer[BUFFER_LENGTH], response[BUFFER_LENGTH];
 
@@ -64,16 +65,18 @@ static void choose_name(SOCKET socket)
 	while (1)
 	{
 		// Choose a name and ask the server if it's valid
-		scanf_s("%s", buffer, BUFFER_LENGTH);
+		ret = scanf("%1024s", buffer);
+		ERROR_HELPER(ret == -1, "Scanf failed");
 
 		// Sends the name to the server and waits for a response
 		send_to_server(socket, buffer);
 		int ret = recv_from_server(socket, response, BUFFER_LENGTH);
-		int result = atoi(response[0]);
+		char tmp[2] = { response[0], '\0' };
+		int result = atoi(tmp);
 
 		// Check the result
 		if (result == 1) break;
-		printf_s("%s\n", response + 1);
+		printf("%s\n", response + 1);
 	}
 
 	// Once the username has been chosen, save the client guid
@@ -82,14 +85,14 @@ static void choose_name(SOCKET socket)
 
 static void print_single_user(string_t username)
 {
-	printf_s("%s\n", username);
+	printf("%s\n", username);
 }
 
 static void load_users_list(SOCKET socket)
 {
 	char buffer[BUFFER_LENGTH];
 	recv_from_server(socket, buffer, BUFFER_LENGTH);
-	client_list_t users_list = deserialize_client_list(buffer);
+	client_list_t users_list = deserialize_client_list(buffer, client_guid);
 	print_list(users_list, print_single_user);
 }
 
@@ -108,7 +111,7 @@ int main()
 
 	// Get and print the welcome message
 	char buffer[BUFFER_LENGTH];
-	int bytes = recv(socket, &buffer, BUFFER_LENGTH);
+	int bytes = recv_from_server(socket, buffer, BUFFER_LENGTH);
 	printf("%s", buffer);
 
 	// Login

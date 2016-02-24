@@ -7,16 +7,18 @@
 #ifndef CLIENT_UTIL_H
 #define CLIENT_UTIL_H
 
+#include <stdio.h>
+
 // ==================== Generic macros ======================
 
-#define ERROR_HELPER(test, message)
-	do										\
-	{										\
-		if (test)							\
-		{									\
-			fprintf_s(stderr, message);		\
-			exit(EXIT_FAILURE);				\
-		}									\
+#define ERROR_HELPER(test, message)					\
+	do												\
+	{												\
+		if (test)									\
+		{											\
+			fprintf(stderr, "%s", message);			\
+			exit(EXIT_FAILURE);						\
+		}											\
 	} while (0)
 
 // ==================== Functions ======================
@@ -29,7 +31,7 @@
 *  Parameters:
 *    socket ---> The socket with an open connection to the server
 *    buf ---> The buffer that contains the message to send */
-void send_to_server(SOCKET socket, char* buf)
+void send_to_server(SOCKET socket, char* buf);
 
 /* =====================================================================
 *  ReceiveFromServer
@@ -40,6 +42,6 @@ void send_to_server(SOCKET socket, char* buf)
 *    socket ---> The socket with an open connection to the server
 *	 buf ---> The buffer to use to store the received message
 *    buf_len ---> The size of the target buffer */
-int recv_from_server(SOCKET socket, char* buf, size_t buf_len)
+int recv_from_server(SOCKET socket, char* buf, size_t buf_len);
 
 #endif
