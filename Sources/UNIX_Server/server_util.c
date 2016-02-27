@@ -11,6 +11,9 @@ void send_to_client(int socket, char* buf)
 {
     int sent_bytes = 0;
     size_t msg_len = strlen(buf);
+
+    buf[msg_len++] = '\n';
+
     int ret;
     while (TRUE)
     {
@@ -22,23 +25,28 @@ void send_to_client(int socket, char* buf)
     }
 }
 
-int recv_from_client(int socket, char* buf, size_t buf_len) 
+int recv_from_client(int socket, char* buf, size_t buf_len)
 {
     int ret;
     int bytes_read = 0;
 
+    printf("RECEIVED A MESSAGE\nBytes received\n");
+
     // messages longer than buf_len will be truncated
     while (bytes_read <= buf_len) 
-    {        
+    {
         ret = recv(socket, buf + bytes_read, 1, 0);
         if (ret == 0 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED; // timeout expired
         if (ret == 0) return -1; // unexpected close from client
-        ERROR_HELPER(ret, "Cannot read from socket!\n");
+        ERROR_HELPER(ret, "Cannot read from socket");
         if (buf[bytes_read] == '\n') break;
         if (bytes_read == buf_len) break;
+        printf("\nByte received %c ", buf[bytes_read]);
         bytes_read += ret;
+        printf("%d", bytes_read);
     }
     buf[bytes_read] = STRING_TERMINATOR;
+    printf("\nMessage received: %s\n", buf);
     return bytes_read;
 }
 

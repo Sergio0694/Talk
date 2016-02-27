@@ -33,5 +33,8 @@ string_helper.o: $(SHDIR)/string_helper.h $(SHDIR)/types.h
 users_list.o: $(LISTDIR)/users_list.c $(LISTDIR)/users_list.h
 	$(CC) -c $(CFLAGS) $(LISTDIR)/users_list.c
 
+run:
+	./server
+
 clean:
 	$(RM) server.o $(OBJ) $(EXE)
