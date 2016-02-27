@@ -9,7 +9,7 @@
 #include "..\Tools\Shared\string_helper.h"
 #include "..\Tools\Shared\types.h"
 
-#define SERVER_IP "127.0.0.1"
+#define SERVER_IP "192.168.56.101"
 #define PORT_NUMBER 25000
 #define BUFFER_LENGTH 1024
 
@@ -68,8 +68,10 @@ static void choose_name(SOCKET socket)
 		ret = scanf("%1024s", buffer);
 		ERROR_HELPER(ret == -1, "Scanf failed");
 
+		printf("Name chosen %s\nTrying to send it to the server\n", buffer);
 		// Sends the name to the server and waits for a response
 		send_to_server(socket, buffer);
+		printf("Sended succesfully\nWaiting for a server response\n");
 		int ret = recv_from_server(socket, response, BUFFER_LENGTH);
 		char tmp[2] = { response[0], '\0' };
 		int result = atoi(tmp);
@@ -103,15 +105,17 @@ int main()
 
 	// Actual socket creation
 	SOCKET socket = create_socket();
+	printf("Socket created\nTrying to establish a connection with the server\n");
 
 	// Connection
 	struct sockaddr_in address = get_socket_address();
 	int ret = connect(socket, (struct sockaddr*)&address, sizeof(struct sockaddr_in));
 	ERROR_HELPER(ret == SOCKET_ERROR, "Something happened while connecting to the server");
+	printf("Connected succesfully\n");
 
 	// Get and print the welcome message
 	char buffer[BUFFER_LENGTH];
-	int bytes = recv_from_server(socket, buffer, BUFFER_LENGTH);
+	int bytes = recv(socket, buffer, BUFFER_LENGTH, 0);
 	printf("%s", buffer);
 
 	// Login
