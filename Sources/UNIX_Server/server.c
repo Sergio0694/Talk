@@ -195,7 +195,7 @@ int main()
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
-    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, 0660);
+    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREATE | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
     // initialize the semaphore to 1
