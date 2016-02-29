@@ -9,7 +9,7 @@
 #include "..\Tools\Shared\string_helper.h"
 #include "..\Tools\Shared\types.h"
 
-#define SERVER_IP "192.168.56.101"
+#define SERVER_IP "192.168.1.103"
 #define PORT_NUMBER 25000
 #define BUFFER_LENGTH 1024
 
@@ -71,7 +71,7 @@ static void choose_name(SOCKET socket)
 		printf("Name chosen %s\nTrying to send it to the server\n", buffer);
 		// Sends the name to the server and waits for a response
 		send_to_server(socket, buffer);
-		printf("Sended succesfully\nWaiting for a server response\n");
+		printf("Sent succesfully\nWaiting for a server response\n");
 		int ret = recv_from_server(socket, response, BUFFER_LENGTH);
 		char tmp[2] = { response[0], '\0' };
 		int result = atoi(tmp);
@@ -83,6 +83,7 @@ static void choose_name(SOCKET socket)
 
 	// Once the username has been chosen, save the client guid
 	client_guid = deserialize_guid(response + 1);
+	printf("Logged in, guid: %s", response + 1);
 }
 
 static void print_single_user(string_t username)
@@ -93,7 +94,9 @@ static void print_single_user(string_t username)
 static void load_users_list(SOCKET socket)
 {
 	char buffer[BUFFER_LENGTH];
+	printf("Waiting for the users list\n");
 	recv_from_server(socket, buffer, BUFFER_LENGTH);
+	printf("List received\n");
 	client_list_t users_list = deserialize_client_list(buffer, client_guid);
 	print_list(users_list, print_single_user);
 }

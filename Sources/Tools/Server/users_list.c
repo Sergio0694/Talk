@@ -233,6 +233,11 @@ string_t serialize_list(const list_t list)
 
 		// Allocate the internal buffer
 		char* internal_buffer = (char*)malloc(sizeof(char) * instance_len);
+		if (internal_buffer == NULL)
+		{
+			fprintf(stderr, "Malloc cannot allocate more space\n");
+			exit(-1);
+		}
 
 		// Clone the name and add the internal separator in the last position
 		string_t edited_name = string_clone(pointer->name);
@@ -253,5 +258,6 @@ string_t serialize_list(const list_t list)
 		// Move to the next item inside the list
 		pointer = pointer->next;
 	}
+	buffer[total_len - 1] = STRING_TERMINATOR;
 	return buffer;
 }

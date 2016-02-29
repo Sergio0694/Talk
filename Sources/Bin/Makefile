@@ -12,29 +12,33 @@ CFDEBUG = -Wall -g
 OBJ = server_util.o guid.o string_helper.o users_list.o
 EXE = server
 
-# Command for clean
+# run and clean commands
 RM = rm -f
+RUN = ./server
 
-all: server.o $(OBJ)
+server: server.o $(OBJ)
 	$(CC) -o $(EXE) server.o $(OBJ) $(CFLAGS)
 
+dbg: server.o $(OBJ)
+	$(CC) -o $(EXE) server.o $(OBJ) $(CFDEBUG) -lpthread
+
 server.o: $(SRVDIR)/server.c $(SRVDIR)/server.h $(OBJ)
-	$(CC) -c $(CFLAGS) $(SRVDIR)/server.c
+	$(CC) -c $(SRVDIR)/server.c
 
 server_util.o: $(SRVDIR)/server_util.c $(SRVDIR)/server.h $(SRVDIR)/server_util.h
-	$(CC) -c $(CFLAGS) $(SRVDIR)/server_util.c
+	$(CC) -c $(SRVDIR)/server_util.c
 
 guid.o: $(SHDIR)/guid.c $(SHDIR)/types.h $(SHDIR)/guid.h
-	$(CC) -c $(CFLAGS) $(SHDIR)/guid.c
+	$(CC) -c $(SHDIR)/guid.c
 
 string_helper.o: $(SHDIR)/string_helper.h $(SHDIR)/types.h
-	$(CC) -c $(CFLAGS) $(SHDIR)/string_helper.c
+	$(CC) -c $(SHDIR)/string_helper.c
 
 users_list.o: $(LISTDIR)/users_list.c $(LISTDIR)/users_list.h
-	$(CC) -c $(CFLAGS) $(LISTDIR)/users_list.c
+	$(CC) -c $(LISTDIR)/users_list.c
 
 run:
-	./server
+	$(RUN)
 
 clean:
 	$(RM) server.o $(OBJ) $(EXE)

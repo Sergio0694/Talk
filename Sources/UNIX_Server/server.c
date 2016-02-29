@@ -1,7 +1,6 @@
 #include <errno.h>
 #include <string.h>     /* strerror() and strlen() */
 #include <pthread.h>
-#include <unistd.h>     /* probably not used - to be verified */
 #include <arpa/inet.h>  /* htons(), ntohs() and inet_ntop() */
 #include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 #include <sys/socket.h>
@@ -14,8 +13,8 @@
 #include "../Tools/Shared/guid.h"
 #include "../Tools/Server/users_list.h"
 #include "../Tools/Shared/string_helper.h"
-#include "server.h"
 #include "server_util.h"
+#include "server.h"
 
 #define EPIPE_RCV if (errno == EPIPE) close_and_cleanup(args, "EPIPE error received")
 
@@ -57,7 +56,7 @@ static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 	pthread_exit(NULL);
 }
 
-static void name_pickup(conn_thread_args_t* args, int* name_len, char* name)
+static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
 {
 	char buf[1024];
 	size_t buf_len = sizeof(buf);
@@ -86,13 +85,9 @@ static void name_pickup(conn_thread_args_t* args, int* name_len, char* name)
 		*name_len = recv_from_client(socketd, buf, buf_len);
 	}
     printf("Correct name received ");
-	name = (char*)malloc(sizeof(char) * (*name_len));
-	name = buf;
-    printf("-- The name is %s\n", buf);
-    printf("Sending a message to inform the client of the correct name choosing\n");
-    sprintf(buf, "1The name is correct");
-    send_to_client(socketd, buf);
-    printf("Sended succesfully\n");
+	*name = (char*)malloc(sizeof(char) * (*name_len));
+	strcpy(*name, buf);
+    printf("-- The name is %s\n", *name);
 }
 
 /* ============================= */
@@ -124,7 +119,7 @@ void* client_connection_handler(void* arg)
     printf("Sending the Welcome message -- The client should see: %s\n", buf);
     send(socketd, buf, strlen(buf), 0);
 	EPIPE_RCV;
-    printf("Welcome message sended on %d socket\n", socketd);
+    printf("Welcome message sent on %d socket\n", socketd);
 
     // set a 2 minutes timeout for choose the name
     tv.tv_sec = 120;
@@ -133,15 +128,15 @@ void* client_connection_handler(void* arg)
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
     // save the name
-	name_pickup(args, &name_len, name);
+	name_pickup(args, &name_len, &name);
 
     // send the generated guid to the client
     guid_t guid = new_guid();
     temp = serialize_guid(guid);
 	sprintf(buf, "1%s", temp);
-    printf("Sending the generated guid %s\n", buf);
+    printf("Sending the generated guid %s\n", buf + 1);
     send_to_client(socketd, buf);
-    printf("Guid sended\n");
+    printf("Guid sent\n");
 	EPIPE_RCV;
 
     // ###### critical section here - semaphore needed ######
@@ -169,8 +164,10 @@ void* client_connection_handler(void* arg)
     // send the serialized users list to the client
     temp = serialize_list(users_list);
     sprintf(buf, "%s", temp);
+    printf("Sending the users list..\n");
     send_to_client(socketd, buf);
 	EPIPE_RCV;
+    printf("Users lilst sent\n");
 
     // set a 5 seconds timeout for recv on client socket
     tv.tv_sec = 5;
@@ -195,7 +192,7 @@ int main()
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
-    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREATE | 0660);
+    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
     // initialize the semaphore to 1
