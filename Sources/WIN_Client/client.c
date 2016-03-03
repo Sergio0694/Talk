@@ -113,7 +113,7 @@ static void load_users_list(SOCKET socket)
 	print_list(client_users_list, print_single_user);
 }
 
-guid* pick_target_user()
+guid pick_target_user()
 {
 	printf("Pick a user to connect to: ");
 	bool_t done;
@@ -126,8 +126,14 @@ guid* pick_target_user()
 		{
 			printf("The input index isn't valid\n");
 		}
-		else return guid;
+		else return *guid;
 	} while (!done);
+}
+
+void send_target_guid(const guid_t guid)
+{
+	string_t serialized = serialize_guid(guid);
+	send_to_server(socket, serialized);
 }
 
 int main()
@@ -157,5 +163,6 @@ int main()
 	load_users_list(socket);
 
 	// Get the guid of the target user to connect to
-	guid_t* target = pick_target_user();
+	guid_t target = pick_target_user();
+	send_to_server();
 }

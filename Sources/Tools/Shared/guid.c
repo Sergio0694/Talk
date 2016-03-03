@@ -126,7 +126,7 @@ static void copy_serialized_int64_buffer(const char* source, char* dest)
 }
 
 // Serializes a GUID into an hex char buffer
-char* serialize_guid(guid_t guid)
+string_t serialize_guid(guid_t guid)
 {
 	// Allocate the buffer and add the string terminator
 	const int iterations = 32;
