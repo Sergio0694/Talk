@@ -13,10 +13,9 @@
 #include "../Tools/Shared/guid.h"
 #include "../Tools/Server/users_list.h"
 #include "../Tools/Shared/string_helper.h"
+#include "chat_handler.h"
 #include "server_util.h"
 #include "server.h"
-
-#define EPIPE_RCV if (errno == EPIPE) close_and_cleanup(args, "EPIPE error received")
 
 /* ===== GLOBAL VARIABLES ===== */
 typedef struct thread_args_s
@@ -35,7 +34,7 @@ union semun
     struct semid_ds* buf;   /* buffer for IPC_STAT, IPC_SET */
     unsigned short* array;  /* array for GETALL, SETALL */
 #if defined(__linux__)
-    struct seminfo* __buf; /* buffer for IPC_INFO (linux-specific) */
+    struct seminfo* __buf;  /* buffer for IPC_INFO (linux-specific) */
 #endif
 };
 /* ============================ */
@@ -55,6 +54,8 @@ static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 	free(args);
 	pthread_exit(NULL);
 }
+
+#define EPIPE_RCV if (errno == EPIPE) close_and_cleanup(args, "EPIPE error received")
 
 static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
 {
@@ -90,6 +91,19 @@ static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
     printf("-- The name is %s\n", *name);
 }
 
+#define REMOVE_GUID(guid) do                                    \
+        {                                                       \
+            sop.sem_op = -1;                                    \
+            ret = semop(semid, &sop, 1);                        \
+            ERROR_HELPER(ret, "Cannot operate on semaphore");   \
+                                                                \
+            remove_guid(users_list, guid);                      \
+                                                                \
+            sop.sem_op = 1;                                     \
+            ret = semop(semid, &sop, 1);                        \
+            ERROR_HELPER(ret, "Cannot operate on semaphore");   \
+        } while (0)         
+
 /* ============================= */
 
 void* client_connection_handler(void* arg)
@@ -106,6 +120,7 @@ void* client_connection_handler(void* arg)
     size_t buf_len = sizeof(buf);
     int ret, name_len;
     string_t temp, name;
+    pthread_t chat_thread;
 
     // timeval struct for recv timeout
     struct timeval tv;
@@ -152,7 +167,7 @@ void* client_connection_handler(void* arg)
      * all other threads wait until the semaphore will be incremented */
 
     // add the user to users_list
-    add(users_list, name, guid, client_ip);
+    add(users_list, name, guid, socketd);
 
     // make the users_list available
     sop.sem_op = 1;
@@ -161,19 +176,73 @@ void* client_connection_handler(void* arg)
 
     // ######################################################
 
-    // send the serialized users list to the client
-    temp = serialize_list(users_list);
-    sprintf(buf, "%s", temp);
-    printf("Sending the users list..\n");
-    send_to_client(socketd, buf);
-	EPIPE_RCV;
-    printf("Users lilst sent\n");
+    while (TRUE)
+    {
+        // sem_num = 0 --> operate on semaphore 0
+        // sem_op = -1 --> decrement the semaphore value, wait if is 0
+        sop.sem_op = -1;
+        ret = semop(semid, &sop, 1);
+        ERROR_HELPER(ret, "Cannot operate on semaphore");
 
-    // set a 5 seconds timeout for recv on client socket
-    tv.tv_sec = 5;
-    tv.tv_usec = 0;
-    ret = setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
-    ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
+        // serialize the users list
+        temp = serialize_list(users_list);
+
+        // make the users_list available
+        sop.sem_op = 1;
+        ret = semop(semid, &sop, 1);
+        ERROR_HELPER(ret, "Cannot operate on semaphore");
+
+        // send the serialized users list to the client
+        sprintf(buf, "%s", temp);
+        printf("Sending the users list..\n");
+        send_to_client(socketd, buf);
+    	EPIPE_RCV;
+        printf("Users list sent\n");
+
+        // wait for the client connection choice
+        ret = recv_from_client(socketd, buf, buf_len);
+        if (ret == TIME_OUT_EXPIRED)
+        {
+            REMOVE_GUID(guid);
+            close_and_cleanup(args, "The client timed out");
+        }
+
+        // if the message received is DISCONNECT the client will be disconnected from the server
+        if (strcmp(buf, "DISCONNECT") == 0)
+        {
+            REMOVE_GUID(guid);
+            close_and_cleanup(args, "The client want to be disconnected");
+        }
+        
+        // take the guid of the chosen client and his connection socket
+        guid_t chosen_guid = deserialize_guid(buf);
+        int chosen_socket = get_socket(users_list, chosen_guid);
+
+        // build the struct for the chat handler
+        suid_t chat_users[2] = { {socketd, guid}, {chosen_socket, chosen_guid} };
+        chat_args_t chat_args;
+        chat_args.suid[0] = chat_users[0];
+        chat_args.suid[1] = chat_users[1];
+
+        // sem_num = 0 --> operate on semaphore 0
+        // sem_op = -1 --> decrement the semaphore value, wait if is 0
+        sop.sem_op = -1;
+        ret = semop(semid, &sop, 1);
+        ERROR_HELPER(ret, "Cannot operate on semaphore");
+
+        // set the available flag for the two users to false
+        set_available_flag(users_list, guid, FALSE);
+        set_available_flag(users_list, chosen_guid, FALSE);
+        
+        // make the users_list available
+        sop.sem_op = 1;
+        ret = semop(semid, &sop, 1);
+        ERROR_HELPER(ret, "Cannot operate on semaphore");
+
+        // start the chat
+        // ...
+
+    } // end of while
 }
 
 int main()
@@ -229,7 +298,7 @@ int main()
 
         if (pthread_create(&thread, NULL, client_connection_handler, args) != 0)
         {
-            fprintf(stderr, "Can't create a new thread, error %d\n", errno);
+            fprintf(stderr, "Can't create a new thread, error %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
 

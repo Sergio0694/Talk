@@ -15,7 +15,7 @@ struct listElem
 	guid_t guid;
 	bool_t available;
 	bool_t connection_requested;
-	string_t ip;
+	int socket;
 	struct listElem* next;
 	struct listElem* previous;
 };
@@ -69,7 +69,6 @@ void destroy(list_t* list)
 
 		// Deallocate the content of the node and the node itself
 		free(temp->name);
-		free(temp->ip);
 		free(temp);
 	}
 
@@ -85,12 +84,12 @@ int get_length(list_t list)
 }
 
 // Add
-void add(list_t list, string_t name, guid_t guid, string_t ip)
+void add(list_t list, string_t name, guid_t guid, int socket)
 {
 	// Allocate the new node and set its info
 	nodePointer node = (nodePointer)malloc(sizeof(listNode));
 	node->name = name;
-	node->ip = ip;
+	node->socket = socket;
 	node->guid = guid;
 	node->available = TRUE;
 	node->connection_requested = FALSE;
@@ -130,7 +129,6 @@ bool_t remove_guid(list_t list, guid_t guid)
 		{
 			// Deallocate the content of the item
 			free(pointer->name);
-			free(pointer->ip);
 
 			// Adjust the references
 			if (pointer->next == NULL) list->tail = NULL;
@@ -197,17 +195,17 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value)
 }
 
 // Get IP address
-string_t get_ip(const list_t list, guid_t guid)
+int get_socket(const list_t list, guid_t guid)
 {
 	// Input check
-	if (IS_EMPTY(list)) return NULL;
+	if (IS_EMPTY(list)) return -1;
 
 	// Try to get the target node
 	nodePointer pointer = get_node(list, guid);
-	if (pointer == NULL) return NULL;
+	if (pointer == NULL) return -1;
 
 	// If the GUID has been found, return the corresponding IP address
-	return pointer->ip;
+	return pointer->socket;
 }
 
 // SerializeList

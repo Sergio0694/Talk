@@ -9,7 +9,7 @@ CFLAGS = -O2 -lpthread
 CFDEBUG = -Wall -g
 
 # obj and exe files
-OBJ = server_util.o guid.o string_helper.o users_list.o
+OBJ = server_util.o guid.o string_helper.o users_list.o chat_handler.o
 EXE = server
 
 # run and clean commands
@@ -36,6 +36,9 @@ string_helper.o: $(SHDIR)/string_helper.h $(SHDIR)/types.h
 
 users_list.o: $(LISTDIR)/users_list.c $(LISTDIR)/users_list.h
 	$(CC) -c $(LISTDIR)/users_list.c
+
+chat_handler.o: $(SRVDIR)/chat_handler.c $(SRVDIR)/chat_handler.h
+	$(CC) -c $(SRVDIR)/chat_handler.c 
 
 run:
 	$(RUN)
