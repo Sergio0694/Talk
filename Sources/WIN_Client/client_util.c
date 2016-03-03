@@ -14,6 +14,12 @@ void send_to_server(SOCKET socket, char* buf)
 	// Calculates the length of the message to send
 	int sent_bytes = 0;
 	size_t msg_len = strlen(buf);
+	printf("Message len: %d\n", msg_len);
+
+	// Add a \n character instead of string terminator
+	buf[msg_len++] = '\n';
+	printf("%s", buf);
+
 	while (TRUE)
 	{
 		// Starts the operation
@@ -23,7 +29,7 @@ void send_to_server(SOCKET socket, char* buf)
 		if (ret == -1 && WSAGetLastError() == WSAEINTR) continue;
 
 		// Check for errors
-		ERROR_HELPER(ret, "Cannot send the message");
+		ERROR_HELPER(ret == -1, "Cannot send the message");
 
 		// Update the progress and continue
 		sent_bytes += ret;
@@ -43,9 +49,10 @@ int recv_from_server(SOCKET socket, char* buf, size_t buf_len)
 		int ret = recv(socket, buf + bytes_read, 1, 0);
 		ERROR_HELPER(ret == 0, "The server unexpectedly closed the connection");
 		ERROR_HELPER(ret == -1, "Cannot read from socket!");
-		if (buf[bytes_read] == STRING_TERMINATOR) break;
+		if (buf[bytes_read] == '\n') break;
 		if (bytes_read == buf_len) break;
 		bytes_read += ret;
 	}
+	buf[bytes_read] = STRING_TERMINATOR;
 	return bytes_read;
 }

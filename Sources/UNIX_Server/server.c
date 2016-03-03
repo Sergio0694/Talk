@@ -1,7 +1,6 @@
 #include <errno.h>
 #include <string.h>     /* strerror() and strlen() */
 #include <pthread.h>
-#include <unistd.h>     /* probably not used - to be verified */
 #include <arpa/inet.h>  /* htons(), ntohs() and inet_ntop() */
 #include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 #include <sys/socket.h>
@@ -14,8 +13,10 @@
 #include "../Tools/Shared/guid.h"
 #include "../Tools/Server/users_list.h"
 #include "../Tools/Shared/string_helper.h"
-#include "server.h"
 #include "server_util.h"
+#include "server.h"
+
+#define EPIPE_RCV if (errno == EPIPE) close_and_cleanup(args, "EPIPE error received")
 
 /* ===== GLOBAL VARIABLES ===== */
 typedef struct thread_args_s
@@ -41,54 +42,59 @@ union semun
 
 /* ===== PRIVATE FUNCTIONS ===== */
 
-static void close_and_cleanup(conn_thread_args_t* args)
+static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 {
 	int socketd = args->sock_desc;
 	struct sockaddr_in* client_addr = args->address;
 
+    fprintf(stderr, "%s\n", msg);
+
 	int ret = close(socketd);
-	ERROR_HELPER(ret, "Errore nella chiusura di una socket");
+	ERROR_HELPER(ret, "Cannot close the socket");
 	free(client_addr);
 	free(args);
 	pthread_exit(NULL);
 }
 
-static void name_pickup(conn_thread_args_t* args, int* name_len, char* name)
+static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
 {
 	char buf[1024];
 	size_t buf_len = sizeof(buf);
 
 	int socketd = args->sock_desc;
 
+    printf("Waiting for name recv\n");
 	*name_len = recv_from_client(socketd, buf, buf_len);
 	if (*name_len < 0)
-	{
-		if (*name_len == TIME_OUT_EXPIRED) send_to_client(socketd, "I'm waiting too much");
-		// else unexpected close from client
-		close_and_cleanup(args);
-	}
+    {
+        if (*name_len == TIME_OUT_EXPIRED) close_and_cleanup(args, "Waited too much for a name");
+        close_and_cleanup(args, "Unexpected close from client");
+    }
 	while (*name_len == 0)
 	{
 		sprintf(buf, "0Please choose a non-empty name: ");
 		send_to_client(socketd, buf);
-		if (errno == EPIPE) close_and_cleanup(args);
+		EPIPE_RCV;
 		*name_len = recv_from_client(socketd, buf, buf_len);
 	}
 	while (!name_validation(buf, *name_len))
 	{
 		sprintf(buf, "0Please choose a name that not contains | or ~ character: ");
 		send_to_client(socketd, buf);
-		if (errno == EPIPE) close_and_cleanup(args);
+		EPIPE_RCV;
 		*name_len = recv_from_client(socketd, buf, buf_len);
 	}
-	name = (char*)malloc(sizeof(char) * (*name_len));
-	name = buf;
+    printf("Correct name received ");
+	*name = (char*)malloc(sizeof(char) * (*name_len));
+	strcpy(*name, buf);
+    printf("-- The name is %s\n", *name);
 }
 
 /* ============================= */
 
 void* client_connection_handler(void* arg)
 {
+    printf("Handling connection\n");
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int socketd = args->sock_desc;
@@ -110,8 +116,10 @@ void* client_connection_handler(void* arg)
 
     // Welcome message
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
-    send_to_client(socketd, buf);
-	if (errno == EPIPE) close_and_cleanup(args);
+    printf("Sending the Welcome message -- The client should see: %s\n", buf);
+    send(socketd, buf, strlen(buf), 0);
+	EPIPE_RCV;
+    printf("Welcome message sent on %d socket\n", socketd);
 
     // set a 2 minutes timeout for choose the name
     tv.tv_sec = 120;
@@ -120,14 +128,16 @@ void* client_connection_handler(void* arg)
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
     // save the name
-	name_pickup(args, &name_len, name);
+	name_pickup(args, &name_len, &name);
 
     // send the generated guid to the client
     guid_t guid = new_guid();
     temp = serialize_guid(guid);
 	sprintf(buf, "1%s", temp);
+    printf("Sending the generated guid %s\n", buf + 1);
     send_to_client(socketd, buf);
-	if (errno == EPIPE) close_and_cleanup(args);
+    printf("Guid sent\n");
+	EPIPE_RCV;
 
     // ###### critical section here - semaphore needed ######
 
@@ -154,8 +164,10 @@ void* client_connection_handler(void* arg)
     // send the serialized users list to the client
     temp = serialize_list(users_list);
     sprintf(buf, "%s", temp);
+    printf("Sending the users list..\n");
     send_to_client(socketd, buf);
-	if (errno == EPIPE) close_and_cleanup(args);
+	EPIPE_RCV;
+    printf("Users lilst sent\n");
 
     // set a 5 seconds timeout for recv on client socket
     tv.tv_sec = 5;
@@ -180,7 +192,7 @@ int main()
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
-    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, 0660);
+    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
     // initialize the semaphore to 1
@@ -199,10 +211,13 @@ int main()
 
     while(TRUE)
     {
+        printf("Waiting for connections ...\n");
     	// accept incoming connection
     	client_desc = accept(socket_desc, (struct sockaddr*)client_addr, (socklen_t*)&sockaddr_len);
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
+
+        printf("Connection accepted -- client socket is: %d\n", client_desc);
 
         pthread_t thread;
 
