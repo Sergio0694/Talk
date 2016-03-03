@@ -17,6 +17,16 @@ typedef struct clientListBase* client_list_t;
 // ==================== Functions ======================
 
 /* =====================================================================
+*  TryGetGuid
+*  =====================================================================
+*  Description:
+*    Tries to get a target guid from the input list
+*  Parameters:
+*    list ---> The source list
+*    index ---> The index of the target guid to retrieve */
+guid_t* try_get_guid(const client_list_t list, const int index);
+
+/* =====================================================================
 *  DeserializeClientList
 *  =====================================================================
 *  Description:
