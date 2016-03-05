@@ -13,4 +13,6 @@ bool_t name_validation(char* name, size_t len);
 
 void server_intial_setup(int socket_desc);
 
+void set_timeval(struct timeval* tv, int sec, int ms);
+
 #endif

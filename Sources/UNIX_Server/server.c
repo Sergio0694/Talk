@@ -91,24 +91,26 @@ static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
     printf("-- The name is %s\n", *name);
 }
 
-#define REMOVE_GUID(guid) do                                    \
+#define SEM_LOCK(sop, semid) do                                 \
         {                                                       \
             sop.sem_op = -1;                                    \
             ret = semop(semid, &sop, 1);                        \
             ERROR_HELPER(ret, "Cannot operate on semaphore");   \
-                                                                \
-            remove_guid(users_list, guid);                      \
-                                                                \
+        } while(0)
+
+#define SEM_RELEASE(sop, semid) do                              \
+        {                                                       \
             sop.sem_op = 1;                                     \
             ret = semop(semid, &sop, 1);                        \
             ERROR_HELPER(ret, "Cannot operate on semaphore");   \
-        } while (0)         
+        } while(0)
 
 /* ============================= */
 
 void* client_connection_handler(void* arg)
 {
     printf("Handling connection\n");
+    
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int socketd = args->sock_desc;
@@ -120,7 +122,6 @@ void* client_connection_handler(void* arg)
     size_t buf_len = sizeof(buf);
     int ret, name_len;
     string_t temp, name;
-    pthread_t chat_thread;
 
     // timeval struct for recv timeout
     struct timeval tv;
@@ -136,9 +137,8 @@ void* client_connection_handler(void* arg)
 	EPIPE_RCV;
     printf("Welcome message sent on %d socket\n", socketd);
 
-    // set a 2 minutes timeout for choose the name
-    tv.tv_sec = 120;
-    tv.tv_usec = 0;
+    // set a 2 minutes timeout for the socket operations
+    set_timeval(&tv, 120, 0);
     ret = setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
@@ -154,14 +154,10 @@ void* client_connection_handler(void* arg)
     printf("Guid sent\n");
 	EPIPE_RCV;
 
-    // ###### critical section here - semaphore needed ######
-
     // sem_num = 0 --> operate on semaphore 0
     // sem_op = -1 --> decrement the semaphore value, wait if is 0
     struct sembuf sop = { 0 };
-    sop.sem_op = -1;
-    ret = semop(semid, &sop, 1);
-    ERROR_HELPER(ret, "Cannot operate on semaphore");
+    SEM_LOCK(sop, semid);
 
     /* if we are here sem value is equal to 0
      * all other threads wait until the semaphore will be incremented */
@@ -170,27 +166,18 @@ void* client_connection_handler(void* arg)
     add(users_list, name, guid, socketd);
 
     // make the users_list available
-    sop.sem_op = 1;
-    ret = semop(semid, &sop, 1);
-    ERROR_HELPER(ret, "Cannot operate on semaphore");
-
-    // ######################################################
+    SEM_RELEASE(sop, semid);
 
     while (TRUE)
     {
-        // sem_num = 0 --> operate on semaphore 0
-        // sem_op = -1 --> decrement the semaphore value, wait if is 0
-        sop.sem_op = -1;
-        ret = semop(semid, &sop, 1);
-        ERROR_HELPER(ret, "Cannot operate on semaphore");
+        // lock the binary semaphore
+        SEM_LOCK(sop, semid);
 
         // serialize the users list
         temp = serialize_list(users_list);
 
         // make the users_list available
-        sop.sem_op = 1;
-        ret = semop(semid, &sop, 1);
-        ERROR_HELPER(ret, "Cannot operate on semaphore");
+        SEM_RELEASE(sop, semid);
 
         // send the serialized users list to the client
         sprintf(buf, "%s", temp);
@@ -203,14 +190,22 @@ void* client_connection_handler(void* arg)
         ret = recv_from_client(socketd, buf, buf_len);
         if (ret == TIME_OUT_EXPIRED)
         {
-            REMOVE_GUID(guid);
+            // remove the user from the users list
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, guid);
+            SEM_RELEASE(sop, semid);
+
             close_and_cleanup(args, "The client timed out");
         }
 
         // if the message received is DISCONNECT the client will be disconnected from the server
         if (strcmp(buf, "DISCONNECT") == 0)
         {
-            REMOVE_GUID(guid);
+            // remove the client from the users list
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, guid);
+            SEM_RELEASE(sop, semid);
+
             close_and_cleanup(args, "The client want to be disconnected");
         }
         
@@ -224,20 +219,27 @@ void* client_connection_handler(void* arg)
         chat_args.suid[0] = chat_users[0];
         chat_args.suid[1] = chat_users[1];
 
-        // sem_num = 0 --> operate on semaphore 0
-        // sem_op = -1 --> decrement the semaphore value, wait if is 0
-        sop.sem_op = -1;
-        ret = semop(semid, &sop, 1);
-        ERROR_HELPER(ret, "Cannot operate on semaphore");
+        // lock the binary semaphore
+        SEM_LOCK(sop, semid);
 
-        // set the available flag for the two users to false
-        set_available_flag(users_list, guid, FALSE);
-        set_available_flag(users_list, chosen_guid, FALSE);
-        
+        // check for the availability of the desired user
+        if (get_available_flag(users_list, chosen_guid))
+        {
+            // set the available flag for the two users to false
+            set_available_flag(users_list, guid, FALSE);
+            set_available_flag(users_list, chosen_guid, FALSE);
+        }
+        else
+        {
+            // make the users_list available
+            SEM_RELEASE(sop, semid);
+
+            // the chosen user is not available for chat, reserialize the users_list updated
+            continue;
+        }
+
         // make the users_list available
-        sop.sem_op = 1;
-        ret = semop(semid, &sop, 1);
-        ERROR_HELPER(ret, "Cannot operate on semaphore");
+        SEM_RELEASE(sop, semid);
 
         // start the chat
         // ...
@@ -281,6 +283,7 @@ int main()
     while(TRUE)
     {
         printf("Waiting for connections ...\n");
+
     	// accept incoming connection
     	client_desc = accept(socket_desc, (struct sockaddr*)client_addr, (socklen_t*)&sockaddr_len);
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals

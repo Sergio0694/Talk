@@ -14,6 +14,6 @@ typedef struct chat_args_s
 	suid_t suid[2];
 } chat_args_t;
 
-void chat_handler();
+void chat_handler(chat_args_t args);
 
 #endif

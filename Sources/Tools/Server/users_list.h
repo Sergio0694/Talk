@@ -87,6 +87,17 @@ bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value);
 bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
 
 /* =====================================================================
+*  GetAvailableFlag
+*  =====================================================================
+*  Description:
+*    Get the "available" flag of the item with the given GUID. Returns
+*    the boolean value of the flag
+*  Parameters:
+*    list ---> The input list
+*    guid ---> The GUID of the item to find */
+bool_t get_available_flag(const list_t list, guid_t guid);
+
+/* =====================================================================
 *  GetIP
 *  =====================================================================
 *  Description:

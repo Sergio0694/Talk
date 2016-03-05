@@ -194,6 +194,13 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value)
 	return set_custom_flag(list, guid, target_value, FALSE);
 }
 
+// Get the available flag of the client described by guid
+bool_t get_available_flag(const list_t list, guid_t guid)
+{
+	nodePointer n = get_node(list, guid);
+	return n->available;
+}
+
 // Get IP address
 int get_socket(const list_t list, guid_t guid)
 {
