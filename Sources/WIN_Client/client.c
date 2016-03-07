@@ -136,6 +136,56 @@ void send_target_guid(const guid_t guid)
 	send_to_server(socket, serialized);
 }
 
+void chat(SOCKET socket)
+{
+	while (TRUE)
+	{
+		// Initialize the input set for the select function
+		fd_set input;
+		FD_SET(stdin, &input);
+		FD_SET(socket, &input);
+
+		// Prepare the timeout
+		struct timeval timeout;
+		timeout.tv_sec = 120;
+		timeout.tv_usec = 0;
+
+		// Call the select
+		int ret = select(0, &input, NULL, NULL, &timeout);
+
+		// Timeout expired
+		if (ret == 0) // TODO
+		{
+
+		}
+
+		// Error handling
+		if (ret == SOCKET_ERROR)
+		{
+			int error = WSAGetLastError();
+			if (error == WSAEINTR) continue;
+			// TODO: close the thread
+		}
+
+		// Check if there is a new message to display
+		if (FD_ISSET(socket, &input) != 0)
+		{
+			char buffer[BUFFER_LENGTH];
+			int read = recv_from_server(socket, buffer, BUFFER_LENGTH);
+			// TODO: print message
+		}
+
+		// Send the new message if necessary
+		if (FD_ISSET(stdin, &input) != 0)
+		{
+			char message[BUFFER_LENGTH];
+			char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
+			if (gets_ret == NULL) continue;
+			send_to_server(socket, message);
+		}
+	}
+}
+
 int main()
 {
 	// Socket API initialization
