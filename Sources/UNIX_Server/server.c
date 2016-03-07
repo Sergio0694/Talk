@@ -13,6 +13,7 @@
 #include "../Tools/Shared/guid.h"
 #include "../Tools/Server/users_list.h"
 #include "../Tools/Shared/string_helper.h"
+#include "sem_util.h"
 #include "chat_handler.h"
 #include "server_util.h"
 #include "server.h"
@@ -95,20 +96,6 @@ static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
     strcpy(*name, buf);
     printf("-- The name is %s\n", *name);
 }
-
-#define SEM_LOCK(sop, semid) do                                 \
-        {                                                       \
-            sop.sem_op = -1;                                    \
-            ret = semop(semid, &sop, 1);                        \
-            ERROR_HELPER(ret, "Cannot operate on semaphore");   \
-        } while(0)
-
-#define SEM_RELEASE(sop, semid) do                              \
-        {                                                       \
-            sop.sem_op = 1;                                     \
-            ret = semop(semid, &sop, 1);                        \
-            ERROR_HELPER(ret, "Cannot operate on semaphore");   \
-        } while(0)
 
 /* ============================= */
 
@@ -247,8 +234,8 @@ void* client_connection_handler(void* arg)
         SEM_RELEASE(sop, semid);
 
         // start the chat
-        // ...
-
+        chat_handler(chat_args);
+        
     } // end of while
 }
 

@@ -26,7 +26,7 @@
 void send_to_client(int socket, char* buf);
 
 /* =====================================================================
-*  ReceiveFromServer
+*  ReceiveFromClient
 *  =====================================================================
 *  Description:
 *    Receives a message from a socket
