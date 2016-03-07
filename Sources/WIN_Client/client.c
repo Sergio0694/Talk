@@ -8,12 +8,14 @@
 #include "..\Tools\Shared\guid.h"
 #include "..\Tools\Shared\string_helper.h"
 #include "..\Tools\Shared\types.h"
+#include "client_graphics.h"
 
 #define SERVER_IP "192.168.1.103"
 #define PORT_NUMBER 25000
 #define BUFFER_LENGTH 1024
 
 guid_t client_guid;
+client_list_t client_users_list;
 
 // Initializes the WINSOCKET API
 static void initialize_socket_API()
@@ -86,9 +88,16 @@ static void choose_name(SOCKET socket)
 	printf("Logged in, guid: %s", response + 1);
 }
 
-static void print_single_user(string_t username)
+static void print_single_user(int index, string_t username)
 {
-	printf("%s\n", username);
+	change_console_color(DARK_TEXT);
+	printf("[");
+	change_console_color(RED_TEXT);
+	printf("%d", index);
+	change_console_color(DARK_TEXT);
+	printf("]");
+	change_console_color(WHITE_TEXT);
+	printf(" %s\n", username);
 }
 
 static void load_users_list(SOCKET socket)
@@ -97,8 +106,34 @@ static void load_users_list(SOCKET socket)
 	printf("Waiting for the users list\n");
 	recv_from_server(socket, buffer, BUFFER_LENGTH);
 	printf("List received\n");
-	client_list_t users_list = deserialize_client_list(buffer, client_guid);
-	print_list(users_list, print_single_user);
+	client_users_list = deserialize_client_list(buffer, client_guid);
+
+	// Print the users list
+	clear_screen();
+	print_list(client_users_list, print_single_user);
+}
+
+guid pick_target_user()
+{
+	printf("Pick a user to connect to: ");
+	bool_t done;
+	do
+	{
+		int target;
+		scanf("%d", &target);
+		guid_t* guid = try_get_guid(client_users_list, target);
+		if (guid == NULL)
+		{
+			printf("The input index isn't valid\n");
+		}
+		else return *guid;
+	} while (!done);
+}
+
+void send_target_guid(const guid_t guid)
+{
+	string_t serialized = serialize_guid(guid);
+	send_to_server(socket, serialized);
 }
 
 int main()
@@ -126,4 +161,8 @@ int main()
 
 	// Print the users list
 	load_users_list(socket);
+
+	// Get the guid of the target user to connect to
+	guid_t target = pick_target_user();
+	send_to_server();
 }

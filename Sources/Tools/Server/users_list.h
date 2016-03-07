@@ -98,6 +98,16 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
 string_t get_ip(const list_t list, guid_t guid);
 
 /* =====================================================================
+*  UsersListIterate
+*  =====================================================================
+*  Description:
+*    Calls the input function for all the items inside the source list
+*  Parameters:
+*    list ---> The input list
+*    f ---> The function to call for each node in the list */
+void users_list_iterate(const list_t list, void(*f)(guid_t));
+
+/* =====================================================================
 *  SerializeList
 *  =====================================================================
 *  Description:
