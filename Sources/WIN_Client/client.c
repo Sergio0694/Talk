@@ -216,3 +216,25 @@ int main()
 	guid_t target = pick_target_user();
 	send_to_server();
 }
+
+HANDLE prepare_chat_window()
+{
+	STARTUP_INFO startup_info;
+	memset(&startup_info, 0, sizeof(startup_info));
+	startup_info.cb = sizeof(startup_info);
+	PROCESS_INFORMATION p_info;
+	memset(&p_info, 0, sizeof(p_info));
+	BOOL res = CreateProcess(
+		NULL, /* Application name */
+		NULL, /* Command line */
+		NULL, /* Process attributes */
+		NULL, /* Thread attributes */
+		FALSE, /* Inherit handles */
+		CREATE_NEW_CONSOLE,
+		NULL, /* Environment */
+		NULL, /* Current directory */
+		(LPSTARTUP_INFO)&startup_info,
+		(LPPROCESS_INFORMATION)&p_info);
+	ERROR_HELPER(!res, "Error creating the new console window");
+	return p_info.hProcess;
+}
