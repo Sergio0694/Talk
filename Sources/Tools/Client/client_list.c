@@ -35,6 +35,11 @@ static void add(client_list_t list, char* name, guid_t guid)
 {
 	// Allocate the new node and set its info
 	clientNodePointer node = (clientNodePointer)malloc(sizeof(clientListNode));
+	if (node == NULL)
+	{
+		fprintf(stderr, "Malloc cannot allocate more space\n");
+		exit(EXIT_FAILURE);
+	}
 	node->name = name;
 	node->guid = guid;
 	node->next = NULL;
@@ -78,6 +83,11 @@ client_list_t deserialize_client_list(const string_t buffer, const guid_t guid)
 
 	// Allocate the return list
 	client_list_t outList = (client_list_t)malloc(sizeof(struct clientListBase));
+	if (outList == NULL)
+	{
+		fprintf(stderr, "Malloc cannot allocate more space\n");
+		exit(EXIT_FAILURE);
+	}
 	outList->head = NULL;
 
 	// Local variables to store the temp values of the deserialized items

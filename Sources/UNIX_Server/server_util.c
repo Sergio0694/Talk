@@ -1,6 +1,7 @@
 #include <stddef.h> /* size_t */
 #include <string.h>
 #include <errno.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 
@@ -25,6 +26,7 @@ void send_to_client(int socket, char* buf)
     }
 }
 
+// Receive a message from the client and add the string terminator
 int recv_from_client(int socket, char* buf, size_t buf_len)
 {
     int ret;
@@ -37,11 +39,16 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
         if (ret == 0 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED; // timeout expired
         if (ret == 0) return -1; // unexpected close from client
         ERROR_HELPER(ret, "Cannot read from socket");
+
+        // a complete message from client finish with a \n
         if (buf[bytes_read] == '\n') break;
+
+        // if there is no \n the message is truncated when is length is buf_len  
         if (bytes_read == buf_len) break;
         bytes_read += ret;
-        printf("%d", bytes_read);
     }
+
+    // substitute the \n with the string terminator
     buf[bytes_read++] = STRING_TERMINATOR;
     printf("\nMessage received: %s\n", buf);
     return bytes_read;
@@ -52,7 +59,8 @@ bool_t name_validation(char* name, size_t len)
     int i;
     for (i = 0; i < len; i++)
     {
-        if (name[i] == EXTERNAL_SEPARATOR || name[i] == INTERNAL_SEPARATOR) return FALSE;
+        if (name[i] == EXTERNAL_SEPARATOR || 
+            name[i] == INTERNAL_SEPARATOR) return FALSE;
     }
     return TRUE;
 }
@@ -83,4 +91,11 @@ void server_intial_setup(int socket_desc)
     // start listening
     ret = listen(socket_desc, MAX_CONN_QUEUE);
     ERROR_HELPER(ret, "Cannot listen on socket");
+}
+
+// Assign the struct timeval fields
+void set_timeval(struct timeval* tv, int sec, int ms)
+{
+    tv->tv_sec = sec;
+    tv->tv_usec = ms;
 }

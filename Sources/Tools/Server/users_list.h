@@ -49,7 +49,7 @@ int get_length(list_t list);
 *    name ---> The name of the new node 
 *    guid ---> The GUID of the new node
 *    ip ---> The IP of the new node */
-void add(list_t list, string_t name, guid_t guid, string_t ip);
+void add(list_t list, string_t name, guid_t guid, int socket);
 
 /* =====================================================================
 *  RemoveGUID
@@ -85,6 +85,17 @@ bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value);
 *    guid ---> The GUID of the item to find
 *    target_value ---> The new value of the flag to set */
 bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
+
+/* =====================================================================
+*  GetAvailableFlag
+*  =====================================================================
+*  Description:
+*    Get the "available" flag of the item with the given GUID. Returns
+*    the boolean value of the flag
+*  Parameters:
+*    list ---> The input list
+*    guid ---> The GUID of the item to find */
+bool_t get_available_flag(const list_t list, guid_t guid);
 
 /* =====================================================================
 *  GetIP

@@ -15,7 +15,7 @@ struct listElem
 	guid_t guid;
 	bool_t available;
 	bool_t connection_requested;
-	string_t ip;
+	int socket;
 	struct listElem* next;
 	struct listElem* previous;
 };
@@ -50,6 +50,11 @@ typedef struct listBase listStruct;
 list_t create()
 {
 	list_t outList = (list_t)malloc(sizeof(listStruct));
+	if (outList == NULL)
+	{
+		fprintf(stderr, "Malloc cannot allocate more space\n");
+		exit(EXIT_FAILURE);
+	}
 	outList->head = NULL;
 	outList->tail = NULL;
 	outList->length = 0;
@@ -69,7 +74,6 @@ void destroy(list_t* list)
 
 		// Deallocate the content of the node and the node itself
 		free(temp->name);
-		free(temp->ip);
 		free(temp);
 	}
 
@@ -85,12 +89,17 @@ int get_length(list_t list)
 }
 
 // Add
-void add(list_t list, string_t name, guid_t guid, string_t ip)
+void add(list_t list, string_t name, guid_t guid, int socket)
 {
 	// Allocate the new node and set its info
 	nodePointer node = (nodePointer)malloc(sizeof(listNode));
+	if (node == NULL)
+	{
+		fprintf(stderr, "Malloc cannot allocate more space\n");
+		exit(EXIT_FAILURE);
+	}
 	node->name = name;
-	node->ip = ip;
+	node->socket = socket;
 	node->guid = guid;
 	node->available = TRUE;
 	node->connection_requested = FALSE;
@@ -130,7 +139,6 @@ bool_t remove_guid(list_t list, guid_t guid)
 		{
 			// Deallocate the content of the item
 			free(pointer->name);
-			free(pointer->ip);
 
 			// Adjust the references
 			if (pointer->next == NULL) list->tail = NULL;
@@ -196,18 +204,25 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value)
 	return set_custom_flag(list, guid, target_value, FALSE);
 }
 
+// Get the available flag of the client described by guid
+bool_t get_available_flag(const list_t list, guid_t guid)
+{
+	nodePointer n = get_node(list, guid);
+	return n->available;
+}
+
 // Get IP address
-string_t get_ip(const list_t list, guid_t guid)
+int get_socket(const list_t list, guid_t guid)
 {
 	// Input check
-	if (IS_EMPTY(list)) return NULL;
+	if (IS_EMPTY(list)) return -1;
 
 	// Try to get the target node
 	nodePointer pointer = get_node(list, guid);
-	if (pointer == NULL) return NULL;
+	if (pointer == NULL) return -1;
 
 	// If the GUID has been found, return the corresponding IP address
-	return pointer->ip;
+	return pointer->socket;
 }
 
 // Iterate
@@ -251,7 +266,7 @@ string_t serialize_list(const list_t list)
 		if (internal_buffer == NULL)
 		{
 			fprintf(stderr, "Malloc cannot allocate more space\n");
-			exit(-1);
+			exit(EXIT_FAILURE);
 		}
 
 		// Clone the name and add the internal separator in the last position
