@@ -238,3 +238,28 @@ HANDLE prepare_chat_window()
 	ERROR_HELPER(!res, "Error creating the new console window");
 	return p_info.hProcess;
 }
+
+HANDLE get_console_screen_buffer_handle(HANDLE console_handle)
+{
+	HANDLE ret = CreateConsoleScreenBuffer(
+		GENERIC_WRITE, /* Desired access */
+		FILE_SHARE_WRITE, /*Share mode */
+		NULL, /* Security attributes */
+		CONSOLE_TEXTMODE_BUFFER, /* Flags */
+		NULL /* Reserved */);
+	ERROR_HELPER(ret == INVALID_HANDLE_VALUE, "Error creating the console buffer");
+	return ret;
+}
+
+void write_console_message(string_t message, HANDLE console_buffer)
+{
+	int len = strlen(message);
+	DWORD written = 0;
+	BOOL res = WriteConsole(
+		console_buffer, /* Console buffer handle */
+		(void*)message, /* Message buffer */
+		len, /* Number of characters to write */
+		(LPDWORD)&written, /* Number of written characters */
+		NULL /* Reserved */);
+	ERROR_HELPER(res == 0, "Error writing into the target console buffer");
+}
