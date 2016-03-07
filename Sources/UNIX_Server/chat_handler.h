@@ -5,13 +5,13 @@
 
 typedef struct suid_s
 {
-	int socket;
-	guid_t guid;
+    int socket;
+    guid_t guid;
 } suid_t;
 
 typedef struct chat_args_s
 {
-	suid_t suid[2];
+    suid_t suid[2];
 } chat_args_t;
 
 void chat_handler(chat_args_t args);

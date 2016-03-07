@@ -38,7 +38,7 @@ users_list.o: $(LISTDIR)/users_list.c $(LISTDIR)/users_list.h
 	$(CC) -c $(LISTDIR)/users_list.c
 
 chat_handler.o: $(SRVDIR)/chat_handler.c $(SRVDIR)/chat_handler.h
-	$(CC) -c $(SRVDIR)/chat_handler.c 
+	$(CC) -c $(SRVDIR)/chat_handler.c
 
 run:
 	$(RUN)

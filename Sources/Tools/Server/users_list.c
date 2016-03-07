@@ -50,6 +50,11 @@ typedef struct listBase listStruct;
 list_t create()
 {
 	list_t outList = (list_t)malloc(sizeof(listStruct));
+	if (outList == NULL)
+	{
+		fprintf(stderr, "Malloc cannot allocate more space\n");
+		exit(EXIT_FAILURE);
+	}
 	outList->head = NULL;
 	outList->tail = NULL;
 	outList->length = 0;
@@ -88,6 +93,11 @@ void add(list_t list, string_t name, guid_t guid, int socket)
 {
 	// Allocate the new node and set its info
 	nodePointer node = (nodePointer)malloc(sizeof(listNode));
+	if (node == NULL)
+	{
+		fprintf(stderr, "Malloc cannot allocate more space\n");
+		exit(EXIT_FAILURE);
+	}
 	node->name = name;
 	node->socket = socket;
 	node->guid = guid;
@@ -241,7 +251,7 @@ string_t serialize_list(const list_t list)
 		if (internal_buffer == NULL)
 		{
 			fprintf(stderr, "Malloc cannot allocate more space\n");
-			exit(-1);
+			exit(EXIT_FAILURE);
 		}
 
 		// Clone the name and add the internal separator in the last position
