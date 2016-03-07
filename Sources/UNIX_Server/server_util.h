@@ -1,16 +1,45 @@
+/* ===========================================================================
+*  server_util.h
+* ============================================================================
+
+*  Authors:         (c) 2015 Sergio Pedri and Andrea Salvati */
+
 #ifndef SERVER_UTIL_H
 #define SERVER_UTIL_H
 
-#define TIME_OUT_EXPIRED -2
-
 #include "../Tools/Shared/types.h"
 
+// ==================== Generic macros ======================
+
+#define TIME_OUT_EXPIRED -2
+
+// ==================== Functions ======================
+
+/* =====================================================================
+*  SendToClient
+*  =====================================================================
+*  Description:
+*    Sends a message buffers to a given socket
+*  Parameters:
+*    socket ---> The socket with an open connection to the client
+*    buf ---> The buffer that contains the message to send */
 void send_to_client(int socket, char* buf);
 
+/* =====================================================================
+*  ReceiveFromServer
+*  =====================================================================
+*  Description:
+*    Receives a message from a socket
+*  Parameters:
+*    socket ---> The socket with an open connection to the client
+*	 buf ---> The buffer to use to store the received message
+*    buf_len ---> Max bytes to read */
 int recv_from_client(int socket, char* buf, size_t buf_len);
 
 bool_t name_validation(char* name, size_t len);
 
 void server_intial_setup(int socket_desc);
+
+void set_timeval(struct timeval* tv, int sec, int ms);
 
 #endif

@@ -13,10 +13,9 @@
 #include "../Tools/Shared/guid.h"
 #include "../Tools/Server/users_list.h"
 #include "../Tools/Shared/string_helper.h"
+#include "chat_handler.h"
 #include "server_util.h"
 #include "server.h"
-
-#define EPIPE_RCV if (errno == EPIPE) close_and_cleanup(args, "EPIPE error received")
 
 /* ===== GLOBAL VARIABLES ===== */
 typedef struct thread_args_s
@@ -35,7 +34,7 @@ union semun
     struct semid_ds* buf;   /* buffer for IPC_STAT, IPC_SET */
     unsigned short* array;  /* array for GETALL, SETALL */
 #if defined(__linux__)
-    struct seminfo* __buf; /* buffer for IPC_INFO (linux-specific) */
+    struct seminfo* __buf;  /* buffer for IPC_INFO (linux-specific) */
 #endif
 };
 /* ============================ */
@@ -44,57 +43,79 @@ union semun
 
 static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 {
-	int socketd = args->sock_desc;
-	struct sockaddr_in* client_addr = args->address;
+    int socketd = args->sock_desc;
+    struct sockaddr_in* client_addr = args->address;
 
     fprintf(stderr, "%s\n", msg);
 
-	int ret = close(socketd);
-	ERROR_HELPER(ret, "Cannot close the socket");
-	free(client_addr);
-	free(args);
-	pthread_exit(NULL);
+    int ret = close(socketd);
+    ERROR_HELPER(ret, "Cannot close the socket");
+    free(client_addr);
+    free(args);
+    pthread_exit(NULL);
 }
+
+#define EPIPE_RCV if (errno == EPIPE) close_and_cleanup(args, "EPIPE error received")
 
 static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
 {
-	char buf[1024];
-	size_t buf_len = sizeof(buf);
+    char buf[1024];
+    size_t buf_len = sizeof(buf);
 
-	int socketd = args->sock_desc;
+    int socketd = args->sock_desc;
 
     printf("Waiting for name recv\n");
-	*name_len = recv_from_client(socketd, buf, buf_len);
-	if (*name_len < 0)
+    *name_len = recv_from_client(socketd, buf, buf_len);
+    if (*name_len < 0)
     {
         if (*name_len == TIME_OUT_EXPIRED) close_and_cleanup(args, "Waited too much for a name");
         close_and_cleanup(args, "Unexpected close from client");
     }
-	while (*name_len == 0)
-	{
-		sprintf(buf, "0Please choose a non-empty name: ");
-		send_to_client(socketd, buf);
-		EPIPE_RCV;
-		*name_len = recv_from_client(socketd, buf, buf_len);
-	}
-	while (!name_validation(buf, *name_len))
-	{
-		sprintf(buf, "0Please choose a name that not contains | or ~ character: ");
-		send_to_client(socketd, buf);
-		EPIPE_RCV;
-		*name_len = recv_from_client(socketd, buf, buf_len);
-	}
+    while (*name_len == 0)
+    {
+        sprintf(buf, "0Please choose a non-empty name: ");
+        send_to_client(socketd, buf);
+        EPIPE_RCV;
+        *name_len = recv_from_client(socketd, buf, buf_len);
+    }
+    while (!name_validation(buf, *name_len))
+    {
+        sprintf(buf, "0Please choose a name that not contains | or ~ character: ");
+        send_to_client(socketd, buf);
+        EPIPE_RCV;
+        *name_len = recv_from_client(socketd, buf, buf_len);
+    }
     printf("Correct name received ");
-	*name = (char*)malloc(sizeof(char) * (*name_len));
-	strcpy(*name, buf);
+    *name = (char*)malloc(sizeof(char) * (*name_len));
+    if (*name == NULL)
+    {
+        fprintf(stderr, "Malloc cannot allocate more space\n");
+        exit(EXIT_FAILURE);
+    }
+    strcpy(*name, buf);
     printf("-- The name is %s\n", *name);
 }
+
+#define SEM_LOCK(sop, semid) do                                 \
+        {                                                       \
+            sop.sem_op = -1;                                    \
+            ret = semop(semid, &sop, 1);                        \
+            ERROR_HELPER(ret, "Cannot operate on semaphore");   \
+        } while(0)
+
+#define SEM_RELEASE(sop, semid) do                              \
+        {                                                       \
+            sop.sem_op = 1;                                     \
+            ret = semop(semid, &sop, 1);                        \
+            ERROR_HELPER(ret, "Cannot operate on semaphore");   \
+        } while(0)
 
 /* ============================= */
 
 void* client_connection_handler(void* arg)
 {
     printf("Handling connection\n");
+
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int socketd = args->sock_desc;
@@ -118,62 +139,117 @@ void* client_connection_handler(void* arg)
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
     printf("Sending the Welcome message -- The client should see: %s\n", buf);
     send(socketd, buf, strlen(buf), 0);
-	EPIPE_RCV;
+    EPIPE_RCV;
     printf("Welcome message sent on %d socket\n", socketd);
 
-    // set a 2 minutes timeout for choose the name
-    tv.tv_sec = 120;
-    tv.tv_usec = 0;
+    // set a 2 minutes timeout for the socket operations
+    set_timeval(&tv, 120, 0);
     ret = setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
     // save the name
-	name_pickup(args, &name_len, &name);
+    name_pickup(args, &name_len, &name);
 
     // send the generated guid to the client
     guid_t guid = new_guid();
     temp = serialize_guid(guid);
-	sprintf(buf, "1%s", temp);
+    sprintf(buf, "1%s", temp);
     printf("Sending the generated guid %s\n", buf + 1);
     send_to_client(socketd, buf);
     printf("Guid sent\n");
-	EPIPE_RCV;
-
-    // ###### critical section here - semaphore needed ######
+    EPIPE_RCV;
 
     // sem_num = 0 --> operate on semaphore 0
     // sem_op = -1 --> decrement the semaphore value, wait if is 0
     struct sembuf sop = { 0 };
-    sop.sem_op = -1;
-    ret = semop(semid, &sop, 1);
-    ERROR_HELPER(ret, "Cannot operate on semaphore");
+    SEM_LOCK(sop, semid);
 
     /* if we are here sem value is equal to 0
      * all other threads wait until the semaphore will be incremented */
 
     // add the user to users_list
-    add(users_list, name, guid, client_ip);
+    add(users_list, name, guid, socketd);
 
     // make the users_list available
-    sop.sem_op = 1;
-    ret = semop(semid, &sop, 1);
-    ERROR_HELPER(ret, "Cannot operate on semaphore");
+    SEM_RELEASE(sop, semid);
 
-    // ######################################################
+    while (TRUE)
+    {
+        // lock the binary semaphore
+        SEM_LOCK(sop, semid);
 
-    // send the serialized users list to the client
-    temp = serialize_list(users_list);
-    sprintf(buf, "%s", temp);
-    printf("Sending the users list..\n");
-    send_to_client(socketd, buf);
-	EPIPE_RCV;
-    printf("Users lilst sent\n");
+        // serialize the users list
+        temp = serialize_list(users_list);
 
-    // set a 5 seconds timeout for recv on client socket
-    tv.tv_sec = 5;
-    tv.tv_usec = 0;
-    ret = setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
-    ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
+        // make the users_list available
+        SEM_RELEASE(sop, semid);
+
+        // send the serialized users list to the client
+        sprintf(buf, "%s", temp);
+        printf("Sending the users list..\n");
+        send_to_client(socketd, buf);
+        EPIPE_RCV;
+        printf("Users list sent\n");
+
+        // wait for the client connection choice
+        ret = recv_from_client(socketd, buf, buf_len);
+        if (ret == TIME_OUT_EXPIRED)
+        {
+            // remove the user from the users list
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, guid);
+            SEM_RELEASE(sop, semid);
+
+            close_and_cleanup(args, "The client timed out");
+        }
+
+        // if the message received is DISCONNECT the client will be disconnected from the server
+        if (strcmp(buf, "DISCONNECT") == 0)
+        {
+            // remove the client from the users list
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, guid);
+            SEM_RELEASE(sop, semid);
+
+            close_and_cleanup(args, "The client want to be disconnected");
+        }
+
+        // take the guid of the chosen client and his connection socket
+        guid_t chosen_guid = deserialize_guid(buf);
+        int chosen_socket = get_socket(users_list, chosen_guid);
+
+        // build the struct for the chat handler
+        suid_t chat_users[2] = { {socketd, guid}, {chosen_socket, chosen_guid} };
+        chat_args_t chat_args;
+        chat_args.suid[0] = chat_users[0];
+        chat_args.suid[1] = chat_users[1];
+
+        // lock the binary semaphore
+        SEM_LOCK(sop, semid);
+
+        // check for the availability of the desired user
+        if (get_available_flag(users_list, chosen_guid))
+        {
+            // set the available flag for the two users to false
+            set_available_flag(users_list, guid, FALSE);
+            set_available_flag(users_list, chosen_guid, FALSE);
+        }
+        else
+        {
+            // make the users_list available
+            SEM_RELEASE(sop, semid);
+
+            // the chosen user is not available for chat, reserialize the users_list updated
+            continue;
+        }
+
+        // make the users_list available
+        SEM_RELEASE(sop, semid);
+
+        // start the chat
+        // ...
+
+    } // end of while
 }
 
 int main()
@@ -201,7 +277,7 @@ int main()
     ret = semctl(semid, 0, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
-	/* =============================================== */
+    /* =============================================== */
 
     // preventing the generation of SIGPIPE -- an EPIPE will be generated instead
     signal(SIGPIPE, SIG_IGN);
@@ -212,8 +288,9 @@ int main()
     while(TRUE)
     {
         printf("Waiting for connections ...\n");
-    	// accept incoming connection
-    	client_desc = accept(socket_desc, (struct sockaddr*)client_addr, (socklen_t*)&sockaddr_len);
+
+        // accept incoming connection
+        client_desc = accept(socket_desc, (struct sockaddr*)client_addr, (socklen_t*)&sockaddr_len);
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
 
@@ -223,13 +300,18 @@ int main()
 
         // argument for thread
         conn_thread_args_t* args = (conn_thread_args_t*)malloc(sizeof(conn_thread_args_t));
+        if (args == NULL)
+        {
+			fprintf(stderr, "Malloc cannot allocate more space\n");
+			exit(EXIT_FAILURE);
+		}
         args->sock_desc = client_desc;
         args->semid = semid;
         args->address = client_addr;
 
         if (pthread_create(&thread, NULL, client_connection_handler, args) != 0)
         {
-            fprintf(stderr, "Can't create a new thread, error %d\n", errno);
+            fprintf(stderr, "Can't create a new thread, error %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
 
