@@ -47,7 +47,7 @@ void print_guid(guid_t guid);
 *    Serializes a GUID into an hex char buffer
 *  Parameters:
 *    guid ---> The GUID to serialize */
-char* serialize_guid(guid_t guid);
+string_t serialize_guid(guid_t guid);
 
 /* =====================================================================
 *  DeserializeGUID

@@ -55,6 +55,25 @@ static void add(client_list_t list, char* name, guid_t guid)
 	}
 }
 
+// TryGetGuid
+guid_t* try_get_guid(const client_list_t list, const int index)
+{
+	// Checks if the input index is not negative
+	if (index < 0) return NULL;
+
+	// Iterate over all the items
+	clientNodePointer pointer = list->head;
+	int current = 0;
+	while (pointer != NULL)
+	{
+		// If the index matches the input, return the current guid
+		if (current == index) return &(pointer->guid);
+		currnt++;
+		pointer = pointer->next;
+	}
+	return NULL;
+}
+
 // Create
 client_list_t deserialize_client_list(const string_t buffer, const guid_t guid)
 {
@@ -108,16 +127,18 @@ client_list_t deserialize_client_list(const string_t buffer, const guid_t guid)
 }
 
 // Print list
-void print_list(const client_list_t list, void(*function)(string_t))
+void print_list(const client_list_t list, void(*function)(int, string_t))
 {
 	// Check if the list is empty
 	if (list == NULL || list->head == NULL) return;
 
 	// Iterate over every item and call the function to print its content
 	clientNodePointer pointer = list->head;
+	int index = 0;
 	while (pointer != NULL)
 	{
-		function(pointer->name);
+		function(index, pointer->name);
 		pointer = pointer->next;
+		index++;
 	}
 }

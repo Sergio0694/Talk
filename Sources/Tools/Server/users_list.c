@@ -225,6 +225,21 @@ int get_socket(const list_t list, guid_t guid)
 	return pointer->socket;
 }
 
+// Iterate
+void users_list_iterate(const list_t list, void(*f)(guid_t))
+{
+	// Input check
+	if (IS_EMPTY(list)) return;
+
+	// Iterate and call the input function on each node
+	nodePointer pointer = list->head;
+	while (pointer != NULL)
+	{
+		f(pointer->guid);
+		pointer = pointer->next;
+	}
+}
+
 // SerializeList
 string_t serialize_list(const list_t list)
 {
