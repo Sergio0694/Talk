@@ -46,8 +46,8 @@ typedef struct listBase listStruct;
 *  Generic functions
 *  ========================================================================= */
 
-// Create
-list_t create()
+// CreateList
+list_t create_list()
 {
 	list_t outList = (list_t)malloc(sizeof(listStruct));
 	if (outList == NULL)
@@ -61,8 +61,8 @@ list_t create()
 	return outList;
 }
 
-// Destroy
-void destroy(list_t* list)
+// DestroyLIst
+void destroy_list(list_t* list)
 {
 	// Deallocate all the nodes in the list
 	nodePointer pointer = (*list)->head;
@@ -82,7 +82,7 @@ void destroy(list_t* list)
 }
 
 // Get length
-int get_length(list_t list)
+int get_list_length(list_t list)
 {
 	if (list == NULL) return -1;
 	return list->length;

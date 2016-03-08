@@ -17,10 +17,21 @@
 typedef struct threads_args_s
 {
     queue_t queue;
-    int sock1;
-    int sock2;
+    suid_t client1;
+    suid_t client2;
     int semid;
 } threads_args_t;
+
+// used in calls to semctl()
+union semun
+{
+    int val;                /* value for SETVAL */
+    struct semid_ds* buf;   /* buffer for IPC_STAT, IPC_SET */
+    unsigned short* array;  /* array for GETALL, SETALL */
+#if defined(__linux__)
+    struct seminfo* __buf;  /* buffer for IPC_INFO (linux-specific) */
+#endif
+};
 
 #define THREAD_CLEAN(sock1, sock2, semid, args) do  \
         {                                           \
@@ -32,7 +43,7 @@ typedef struct threads_args_s
         } while(0)
 /* ============================================ */
 
-void* recv_thread(void* arg)
+void* recv_thread(void* farg)
 {
     // aux variables
     int ret;
@@ -41,10 +52,12 @@ void* recv_thread(void* arg)
     int buf_len = sizeof(buf);
 
     // get handler arguments
-    threads_args_t* args = (threads_args_t*)arg;
+    threads_args_t* args = (threads_args_t*)farg;
     queue_t queue = args->queue;
-    int src1 = args->sock1;
-    int src2 = args->sock2;
+    suid_t client1 = args->client1;
+    suid_t client2 = args->client2;
+    int src1 = client1.socket;
+    int src2 = client2.socket;
     int semid = args->semid;
 
     // initialize the timeval structure
@@ -80,6 +93,14 @@ void* recv_thread(void* arg)
             // receive from client1 -- the timeout on socket will be ignored
             ret = recv_from_client(src1, buf, buf_len);
             if (ret == -1) THREAD_CLEAN(src1, src2, semid, args);
+
+            // add the received message to the message queue
+            // lock semaphore 0 and release semaphore 1
+            struct sembuf sop = { 0 };
+            SEM_LOCK(sop, semid);
+            enqueue(queue, buf);
+            sop.sem_num = 1;
+            SEM_RELEASE(sop, semid);
         }
 
         // check if src2 is still in readfd set
@@ -88,26 +109,47 @@ void* recv_thread(void* arg)
             // receive from client2 -- the timeout on socket will be ignored
             ret = recv_from_client(src1, buf, buf_len);
             if (ret == -1) THREAD_CLEAN(src1, src2, semid, args);
-        }
 
-        // add the received message at the message queue -- lock semaphore 0 and release semaphore 1
-        struct sembuf sop = { 0 };
-        SEM_LOCK(sop, semid);
-        enqueue(queue);
-        sop.sem_num = 1;
-        SEM_RELEASE(sop, semid);
+            // add the received message to the message queue
+            // lock semaphore 0 and release semaphore 1
+            struct sembuf sop = { 0 };
+            SEM_LOCK(sop, semid);
+            enqueue(queue, buf);
+            sop.sem_num = 1;
+            SEM_RELEASE(sop, semid);
+        }
     }
 }
 
 void* send_thread(void* arg)
 {
+    // aux variables
+    int ret;
+    char* buf;
+    int buf_len = sizeof(buf);
+
     // get handler arguments
     threads_args_t* args = (threads_args_t*)arg;
     queue_t queue = args->queue;
-    int src1 = args->sock1;
-    int src2 = args->sock2;
+    suid_t client1 = args->client1;
+    suid_t client2 = args->client2;
+    int dst1 = client1.socket;
+    int dst2 = client2.socket;
     int semid = args->semid;
 
+    while (TRUE)
+    {
+        // take the message from the message queue
+        // lock semaphore 1 and release semaphore 0
+        struct sembuf sop = { 0 };
+        sop.sem_num = 1;
+        SEM_LOCK(sop, semid);
+        buf = dequeue(queue);
+        sop.sem_num = 0;
+        SEM_RELEASE(sop, semid);
+
+        // ...
+    }
 }
 
 void chat_handler(chat_args_t args)
@@ -121,9 +163,9 @@ void chat_handler(chat_args_t args)
     suid_t client2 = args.suid[1];
 
     // create the message queue
-    queue_t queue = create();
+    queue_t queue = create_queue();
 
-    // create the semaphore
+    // create an array of two semaphores
     int semid = semget(IPC_PRIVATE, /* semnum = */ 2, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 

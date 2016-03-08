@@ -17,27 +17,27 @@ typedef struct listBase* list_t;
 // ==================== Functions ======================
 
 /* =====================================================================
-*  Create
+*  CreateList
 *  =====================================================================
 *  Description:
 *    Creates a new, empty list */
-list_t create();
+list_t create_list();
 
 /* =====================================================================
-*  Destroy
+*  DestroyList
 *  =====================================================================
 *  Description:
 *    Deallocates a list and all its content
 *  Parameters:
 *    list ---> The list to destroy */
-void destroy(list_t* list);
+void destroy_list(list_t* list);
 
 /* =====================================================================
 *  GetLength
 *  =====================================================================
 *  Description:
 *    Returns the length of the input list */
-int get_length(list_t list);
+int get_list_length(list_t list);
 
 /* =====================================================================
 *  Add
@@ -45,8 +45,8 @@ int get_length(list_t list);
 *  Description:
 *    Adds a new node with the given info in the last position
 *  Parameters:
-*    list ---> The list to edit 
-*    name ---> The name of the new node 
+*    list ---> The list to edit
+*    name ---> The name of the new node
 *    guid ---> The GUID of the new node
 *    ip ---> The IP of the new node */
 void add(list_t list, string_t name, guid_t guid, int socket);
@@ -78,7 +78,7 @@ bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value);
 *  =====================================================================
 *  Description:
 *    Sets the "connection requested" flag of the item with the given GUID.
-*    Returns TRUE if the operation was successful, 
+*    Returns TRUE if the operation was successful,
 *    FALSE if the item wasn't present
 *  Parameters:
 *    list ---> The input list
@@ -122,7 +122,7 @@ void users_list_iterate(const list_t list, void(*f)(guid_t));
 *  SerializeList
 *  =====================================================================
 *  Description:
-*    Serializes the given list into a string. The function only 
+*    Serializes the given list into a string. The function only
 *    takes into account the name and the GUID of each entry.
 *  Parameters:
 *    list ---> The list to serialize */

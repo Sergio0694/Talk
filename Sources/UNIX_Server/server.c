@@ -235,7 +235,7 @@ void* client_connection_handler(void* arg)
 
         // start the chat
         chat_handler(chat_args);
-        
+
     } // end of while
 }
 
@@ -247,7 +247,7 @@ int main()
     int sockaddr_len = sizeof(struct sockaddr_in);
 
     // server setup
-    users_list = create();
+    users_list = create_list();
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
     ERROR_HELPER(socket_desc, "cannot open server socket");
     server_intial_setup(socket_desc);

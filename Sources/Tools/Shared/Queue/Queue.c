@@ -41,7 +41,7 @@ typedef queueStruct* queue;
 *  ========================================================================= */
 
 // Create
-queue_t create()
+queue_t create_queue()
 {
     queue outQueue = (queue)malloc(sizeof(queueStruct));
     outQueue->head = NULL;
@@ -106,10 +106,10 @@ char* dequeue(queue_t target)
 }
 
 // GetLength
-size_t get_length(queue_t queue) { return queue->length; }
+size_t get_queue_length(queue_t queue) { return queue->length; }
 
 // Destroy
-void destroy(queue_t* queue)
+void destroy_queue(queue_t* queue)
 {
     // Deallocate all the items left in the queue
     nodePointer pointer = (*queue)->head;

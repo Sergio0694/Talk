@@ -8,6 +8,7 @@
 #define GUID_H
 
 #include "types.h"
+#include "string_helper.h"
 
 // =================== Public types ====================
 typedef struct guidStruct* guid_t;
