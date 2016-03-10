@@ -220,10 +220,10 @@ int main()
 HANDLE prepare_chat_window()
 {
 	STARTUP_INFO startup_info;
-	memset(&startup_info, 0, sizeof(startup_info));
+	SecureZeroMemory((PVOID)&startup_info, sizeof(startup_info));
 	startup_info.cb = sizeof(startup_info);
 	PROCESS_INFORMATION p_info;
-	memset(&p_info, 0, sizeof(p_info));
+	SecureZeroMemory((PVOID)&p_info, sizeof(p_info));
 	BOOL res = CreateProcess(
 		NULL, /* Application name */
 		NULL, /* Command line */

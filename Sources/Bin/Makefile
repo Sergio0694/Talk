@@ -10,11 +10,11 @@ CFDEBUG = -Wall -g
 
 # obj and exe files
 OBJ = server_util.o guid.o string_helper.o users_list.o chat_handler.o queue.o
-EXE = server
+EXE = server.out
 
 # run and clean commands
 RM = rm -f
-RUN = ./server
+RUN = ./server.out
 
 server: server.o $(OBJ)
 	$(CC) -o $(EXE) server.o $(OBJ) $(CFLAGS)
