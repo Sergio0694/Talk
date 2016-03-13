@@ -11,7 +11,9 @@
 
 // ==================== Generic macros ======================
 
+#define CLIENT_UNEXPECTED_CLOSE -1
 #define TIME_OUT_EXPIRED -2
+#define CONNECTION_REQUESTED -3
 
 // ==================== Functions ======================
 

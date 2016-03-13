@@ -97,6 +97,36 @@ static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
     printf("-- The name is %s\n", *name);
 }
 
+int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
+{
+    int ret;
+    int bytes_read = 0;
+
+    while (bytes_read <= buf_len)
+    {
+        ret = recv(socket, buf + bytes_read, 1, MSG_DONTWAIT);
+        if (ret == -1 && errno == EAGAIN)
+        {
+            // continously che for connection request by othe client
+            if (get_connection_requested_flag(users_list, guid)) return CONNECTION_REQUESTED;
+            continue;
+        }
+        // don't know if this makes sense
+        if (ret == -1 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED;
+        if (ret == 0) return CLIENT_UNEXPECTED_CLOSE;
+        ERROR_HELPER(ret, "Cannot receive on socket");
+
+        if (buf[bytes_read] == '\n') break;
+
+        // if there is no \n the message is truncated when is length is buf_len
+        if (bytes_read == buf_len) break;
+        bytes_read += ret;
+    }
+
+    buf[bytes_read++] = STRING_TERMINATOR;
+    return bytes_read;
+}
+
 /* ============================= */
 
 void* client_connection_handler(void* arg)
@@ -114,6 +144,9 @@ void* client_connection_handler(void* arg)
     size_t buf_len = sizeof(buf);
     int ret, name_len;
     string_t temp, name;
+    suid_t chat_users[2];
+    guid_t chosen_guid;
+    int chosen_socket;
 
     // timeval struct for recv timeout
     struct timeval tv;
@@ -151,9 +184,6 @@ void* client_connection_handler(void* arg)
     struct sembuf sop = { 0 };
     SEM_LOCK(sop, semid);
 
-    /* if we are here sem value is equal to 0
-     * all other threads wait until the semaphore will be incremented */
-
     // add the user to users_list
     add(users_list, name, guid, socketd);
 
@@ -179,7 +209,7 @@ void* client_connection_handler(void* arg)
         printf("Users list sent\n");
 
         // wait for the client connection choice
-        ret = recv_from_client(socketd, buf, buf_len);
+        ret = nonblocking_recv(socketd, buf, buf_len);
         if (ret == TIME_OUT_EXPIRED)
         {
             // remove the user from the users list
@@ -188,6 +218,14 @@ void* client_connection_handler(void* arg)
             SEM_RELEASE(sop, semid);
 
             close_and_cleanup(args, "The client timed out");
+        }
+        if (ret == CONNECTION_REQUESTED)
+        {
+            // get the partner socket
+            SEM_LOCK(sop, semid);
+            chosen_guid = get_partner(users_list, guid);
+            chosen_socket = get_socket(users_list, chosen_guid);
+            SEM_RELEASE(sop, semid);
         }
 
         // if the message received is DISCONNECT the client will be disconnected from the server
@@ -201,37 +239,47 @@ void* client_connection_handler(void* arg)
             close_and_cleanup(args, "The client want to be disconnected");
         }
 
-        // take the guid of the chosen client and his connection socket
-        guid_t chosen_guid = deserialize_guid(buf);
-        int chosen_socket = get_socket(users_list, chosen_guid);
+        if (ret != CONNECTION_REQUESTED)
+        {
+            // take the guid of the chosen client and his connection socket
+            chosen_guid = deserialize_guid(buf);
+            chosen_socket = get_socket(users_list, chosen_guid);
+        }
 
         // build the struct for the chat handler
-        suid_t chat_users[2] = { {socketd, guid}, {chosen_socket, chosen_guid} };
+        chat_users = { {socketd, guid}, {chosen_socket, chosen_guid} };
         chat_args_t chat_args;
         chat_args.suid[0] = chat_users[0];
         chat_args.suid[1] = chat_users[1];
 
-        // lock the binary semaphore
-        SEM_LOCK(sop, semid);
+        if (ret != CONNECTION_REQUESTED)
+        {
+            // lock the binary semaphore
+            SEM_LOCK(sop, semid);
 
-        // check for the availability of the desired user
-        if (get_available_flag(users_list, chosen_guid))
-        {
-            // set the available flag for the two users to false
-            set_available_flag(users_list, guid, FALSE);
-            set_available_flag(users_list, chosen_guid, FALSE);
-        }
-        else
-        {
+            // check for the availability of the desired user
+            if (get_available_flag(users_list, chosen_guid))
+            {
+                // set the available flag for the two users to false
+                set_available_flag(users_list, guid, FALSE);
+                set_available_flag(users_list, chosen_guid, FALSE);
+
+                // set the partner for both users
+                set_partner(users_list, guid, chosen_guid);
+                set_partner(users_list, chosen_guid, guid);
+            }
+            else
+            {
+                // make the users_list available
+                SEM_RELEASE(sop, semid);
+
+                // the chosen user is not available for chat, reserialize the users_list updated
+                continue;
+            }
+
             // make the users_list available
             SEM_RELEASE(sop, semid);
-
-            // the chosen user is not available for chat, reserialize the users_list updated
-            continue;
         }
-
-        // make the users_list available
-        SEM_RELEASE(sop, semid);
 
         // start the chat
         chat_handler(chat_args);
