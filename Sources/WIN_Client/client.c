@@ -59,6 +59,7 @@ static struct sockaddr_in get_socket_address()
 static void choose_name(SOCKET socket)
 {
 	int ret;
+	char* gets_ret;
 
 	// Allocate the buffers to use
 	char buffer[BUFFER_LENGTH], response[BUFFER_LENGTH];
@@ -67,8 +68,8 @@ static void choose_name(SOCKET socket)
 	while (1)
 	{
 		// Choose a name and ask the server if it's valid
-		ret = scanf("%1024s", buffer);
-		ERROR_HELPER(ret == -1, "Scanf failed");
+		gets_ret = fgets(buffer, BUFFER_LENGTH, stdin);
+		ERROR_HELPER(gets_ret == NULL, "fgets fails");
 
 		printf("Name chosen %s\nTrying to send it to the server\n", buffer);
 		// Sends the name to the server and waits for a response

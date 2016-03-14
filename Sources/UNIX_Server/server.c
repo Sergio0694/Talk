@@ -63,7 +63,7 @@ static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 // Performs a check on the return codes from recv_from_client function
 static inline void check_recv_error(int ret, conn_thread_args_t* args)
 {
-    if (ret == TIME_OUT_EXPIRED) close_and_cleanup(args, "Waited too much for a name");
+    if (ret == TIME_OUT_EXPIRED) close_and_cleanup(args, "The client timed out");
     else if (ret == CLIENT_UNEXPECTED_CLOSE)
         close_and_cleanup(args, "Unexpected close from client");
     else if (ret == UNEXPECTED_ERROR) close_and_cleanup(args, "Cannot read from socket");
@@ -134,7 +134,7 @@ int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
         // don't know if this makes sense
         if (ret == -1 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED;
         if (ret == 0) return CLIENT_UNEXPECTED_CLOSE;
-        ERROR_HELPER(ret, "Cannot receive on socket");
+        if (ret < 0) return UNEXPECTED_ERROR;
 
         if (buf[bytes_read] == '\n') break;
 
@@ -194,6 +194,7 @@ void* client_connection_handler(void* arg)
     guid_t guid = new_guid();
     temp = serialize_guid(guid);
     snprintf(buf, buf_len, "1%s", temp);
+    free(temp);
     printf("Sending the generated guid %s\n", buf + 1);
     ret = send_to_client(socketd, buf);
     check_send_error(ret, args);
@@ -210,6 +211,8 @@ void* client_connection_handler(void* arg)
     // make the users_list available
     SEM_RELEASE(sop, semid);
 
+    free(name);
+
     while (TRUE)
     {
         // lock the binary semaphore
@@ -223,22 +226,28 @@ void* client_connection_handler(void* arg)
 
         // send the serialized users list to the client
         snprintf(buf, buf_len, "%s", temp);
+        free(temp);
         printf("Sending the users list..\n");
         ret = send_to_client(socketd, buf);
+        if (ret < 0)
+        {
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, guid);
+            SEM_RELEASE(sop, semid);
+        }
         check_send_error(ret, args);
         printf("Users list sent\n");
 
         // wait for the client connection choice
         ret = nonblocking_recv(socketd, buf, buf_len, guid);
-        if (ret == TIME_OUT_EXPIRED)
+        if (ret < 0 && ret != CONNECTION_REQUESTED)
         {
             // remove the user from the users list
             SEM_LOCK(sop, semid);
             remove_guid(users_list, guid);
             SEM_RELEASE(sop, semid);
-
-            close_and_cleanup(args, "The client timed out");
         }
+        check_recv_error(ret, args);
         if (ret == CONNECTION_REQUESTED)
         {
             // get the partner socket
@@ -259,6 +268,7 @@ void* client_connection_handler(void* arg)
             close_and_cleanup(args, "The client want to be disconnected");
         }
 
+        // if ret != CONNECTION_REQUESTED the client has performed a choose
         if (ret != CONNECTION_REQUESTED)
         {
             // take the guid of the chosen client and his connection socket
@@ -283,6 +293,9 @@ void* client_connection_handler(void* arg)
             // check for the availability of the desired user
             if (get_available_flag(users_list, chosen_guid))
             {
+                // set the connection requested flag for the chosen client
+                set_connection_flag(users_list, chosen_guid, TRUE);
+
                 // set the available flag for the two users to false
                 set_available_flag(users_list, guid, FALSE);
                 set_available_flag(users_list, chosen_guid, FALSE);

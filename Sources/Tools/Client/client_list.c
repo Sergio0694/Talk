@@ -68,7 +68,7 @@ guid_t* try_get_guid(const client_list_t list, const int index)
 	{
 		// If the index matches the input, return the current guid
 		if (current == index) return &(pointer->guid);
-		currnt++;
+		current++;
 		pointer = pointer->next;
 	}
 	return NULL;
