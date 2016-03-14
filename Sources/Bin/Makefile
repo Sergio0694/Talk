@@ -6,7 +6,7 @@ SHDIR = ../Tools/Shared
 # Compiler
 CC = gcc
 CFLAGS = -O2 -lpthread
-CFDEBUG = -Wall -g
+CFDEBUG = -Wall -g -D_FORTIFY_SOURCE=1
 
 # obj and exe files
 OBJ = server_util.o guid.o string_helper.o users_list.o chat_handler.o queue.o
@@ -20,7 +20,7 @@ server: server.o $(OBJ)
 	$(CC) -o $(EXE) server.o $(OBJ) $(CFLAGS)
 
 dbg: server.o $(OBJ)
-	$(CC) -o $(EXE) server.o $(OBJ) $(CFDEBUG) -lpthread
+	$(CC) -o $(EXE) server.o $(OBJ) $(CFDEBUG) $(CFLAGS)
 
 server.o: $(SRVDIR)/server.c $(SRVDIR)/server.h $(OBJ)
 	$(CC) -c $(SRVDIR)/server.c

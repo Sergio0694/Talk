@@ -9,22 +9,22 @@
 #include "server_util.h"
 
 // Send a message to the client
-void send_to_client(int socket, char* buf)
+int send_to_client(int socket, char* buf)
 {
-    int sent_bytes = 0;
+    int sent_bytes = 0, ret;
     size_t msg_len = strlen(buf);
 
     buf[msg_len++] = '\n';
 
-    int ret;
     while (TRUE)
     {
         ret = send(socket, buf + sent_bytes, msg_len, 0);
         if (ret == -1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Cannot send the message");
+        if (ret < 0) return ret;
         sent_bytes += ret;
         if (sent_bytes == msg_len) break;
     }
+    return sent_bytes;
 }
 
 // Receive a message from the client and add the string terminator
@@ -37,9 +37,9 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
     while (bytes_read <= buf_len)
     {
         ret = recv(socket, buf + bytes_read, 1, 0);
-        if (ret == 0 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED; // timeout expired
+        if (ret == -1 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED; // timeout expired
         if (ret == 0) return CLIENT_UNEXPECTED_CLOSE; // unexpected close from client
-        ERROR_HELPER(ret, "Cannot read from socket");
+        if (ret < 0) return UNEXPECTED_ERROR;
 
         // a complete message from client finish with a \n
         if (buf[bytes_read] == '\n') break;

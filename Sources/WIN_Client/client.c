@@ -113,7 +113,7 @@ static void load_users_list(SOCKET socket)
 	print_list(client_users_list, print_single_user);
 }
 
-guid pick_target_user()
+guid_t pick_target_user()
 {
 	printf("Pick a user to connect to: ");
 	bool_t done;
@@ -214,7 +214,7 @@ int main()
 
 	// Get the guid of the target user to connect to
 	guid_t target = pick_target_user();
-	send_to_server();
+	send_to_server(socket, serialize_guid(target));
 }
 
 HANDLE prepare_chat_window()
