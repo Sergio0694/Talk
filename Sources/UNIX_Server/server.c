@@ -79,41 +79,41 @@ static inline void check_send_error(int ret, conn_thread_args_t* args)
     }
 }
 
-static void name_pickup(conn_thread_args_t* args, int* name_len, char** name)
+static void name_pickup(conn_thread_args_t* args, char** name)
 {
-    int ret;
+    int ret, name_len;
     char buf[1024];
     size_t buf_len = sizeof(buf);
 
     int socketd = args->sock_desc;
 
     printf("Waiting for name recv\n");
-    *name_len = recv_from_client(socketd, buf, buf_len);
-    check_recv_error(*name_len, args);
-    while (*name_len == 0)
+    name_len = recv_from_client(socketd, buf, buf_len);
+    check_recv_error(name_len, args);
+    while (name_len == 0)
     {
         sprintf(buf, "0Please choose a non-empty name: ");
         ret = send_to_client(socketd, buf);
         check_send_error(ret, args);
-        *name_len = recv_from_client(socketd, buf, buf_len);
-        check_recv_error(*name_len, args);
+        name_len = recv_from_client(socketd, buf, buf_len);
+        check_recv_error(name_len, args);
     }
-    while (!name_validation(buf, *name_len))
+    while (!name_validation(buf, name_len))
     {
-        sprintf(buf, "0Please choose a name that not contains | or ~ character: ");
+        sprintf(buf, "0Please choose a name that does not contains | or ~ character: ");
         ret = send_to_client(socketd, buf);
         check_send_error(ret, args);
-        *name_len = recv_from_client(socketd, buf, buf_len);
-        check_recv_error(*name_len, args);
+        name_len = recv_from_client(socketd, buf, buf_len);
+        check_recv_error(name_len, args);
     }
     printf("Correct name received ");
-    *name = (char*)malloc(sizeof(char) * (*name_len));
+    *name = (char*)malloc(sizeof(char) * (name_len));
     if (*name == NULL)
     {
         fprintf(stderr, "Malloc cannot allocate more space\n");
         exit(EXIT_FAILURE);
     }
-    strncpy(*name, buf, *name_len);
+    strncpy(*name, buf, name_len);
     printf("-- The name is %s\n", *name);
 }
 
@@ -162,9 +162,11 @@ void* client_connection_handler(void* arg)
     // aux variables
     char buf[1024], client_ip[INET_ADDRSTRLEN];
     size_t buf_len = sizeof(buf);
-    int ret, name_len;
+    int ret;
     string_t temp, name;
     suid_t chat_users[2];
+
+    // chosen target information
     guid_t chosen_guid;
     int chosen_socket;
 
@@ -188,7 +190,7 @@ void* client_connection_handler(void* arg)
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
     // save the name
-    name_pickup(args, &name_len, &name);
+    name_pickup(args, &name);
 
     // send the generated guid to the client
     guid_t guid = new_guid();
@@ -204,13 +206,12 @@ void* client_connection_handler(void* arg)
     // sem_op = -1 --> decrement the semaphore value, wait if is 0
     struct sembuf sop = { 0 };
     SEM_LOCK(sop, semid);
-
     // add the user to users_list
     add(users_list, name, guid, socketd);
-
     // make the users_list available
     SEM_RELEASE(sop, semid);
 
+    // name is no longer useful, free it
     free(name);
 
     while (TRUE)
