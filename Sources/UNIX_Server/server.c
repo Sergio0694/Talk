@@ -10,9 +10,9 @@
 #include <sys/sem.h>
 #include <signal.h>
 
-#include "../Tools/Shared/guid.h"
-#include "../Tools/Server/users_list.h"
-#include "../Tools/Shared/string_helper.h"
+#include "../Shared/guid.h"
+#include "UsersList/users_list.h"
+#include "../Shared/string_helper.h"
 #include "sem_util.h"
 #include "chat_handler.h"
 #include "server_util.h"

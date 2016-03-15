@@ -1,7 +1,7 @@
 #ifndef CHAT_H
 #define CHAT_H
 
-#include "../Tools/Shared/guid.h"
+#include "../Shared/guid.h"
 
 typedef struct suid_s
 {

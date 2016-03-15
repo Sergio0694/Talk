@@ -7,7 +7,7 @@
 #ifndef SERVER_UTIL_H
 #define SERVER_UTIL_H
 
-#include "../Tools/Shared/types.h"
+#include "../Shared/types.h"
 
 // ==================== Generic macros ======================
 

@@ -9,8 +9,8 @@
 
 #include "chat_handler.h"
 #include "server_util.h"
-#include "../Tools/Shared/types.h"
-#include "../Tools/Shared/Queue/Queue.h"
+#include "../Shared/types.h"
+#include "../Shared/Queue/Queue.h"
 
 void chat_handler(chat_args_t args)
 {

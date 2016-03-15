@@ -4,10 +4,10 @@
 #include <Ws2tcpip.h> /* InetPton */
 
 #include "client_util.h"
-#include "..\Tools\Client\client_list.h"
-#include "..\Tools\Shared\guid.h"
-#include "..\Tools\Shared\string_helper.h"
-#include "..\Tools\Shared\types.h"
+#include "ClientList\client_list.h"
+#include "..\Shared\guid.h"
+#include "..\Shared\string_helper.h"
+#include "..\Shared\types.h"
 #include "client_graphics.h"
 
 #define SERVER_IP "192.168.1.103"
