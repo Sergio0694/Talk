@@ -7,9 +7,9 @@
 #ifndef USERS_LIST_H
 #define USERS_LIST_H
 
-#include "../Shared/guid.h"
-#include "../Shared/types.h"
-#include "../Shared/string_helper.h"
+#include "../../Shared/guid.h"
+#include "../../Shared/types.h"
+#include "../../Shared/string_helper.h"
 
 // =================== Public types ====================
 typedef struct listBase* list_t;
@@ -87,6 +87,19 @@ bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value);
 bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
 
 /* =====================================================================
+*  SetPartner
+*  =====================================================================
+*  Description:
+*    Sets the "partner_req" parameter of the item with the given GUID.
+*    Returns TRUE if the operation was successful,
+*    FALSE if the item wasn't present
+*  Parameters:
+*    list ---> The input list
+*    guid ---> The GUID of the item to find
+*    partner ---> The value of the partner guid */
+bool_t set_partner(list_t list, guid_t guid, guid_t partner);
+
+/* =====================================================================
 *  GetAvailableFlag
 *  =====================================================================
 *  Description:
@@ -98,15 +111,36 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
 bool_t get_available_flag(const list_t list, guid_t guid);
 
 /* =====================================================================
-*  GetIP
+*  GetConnectionRequestedFlag
 *  =====================================================================
 *  Description:
-*    Returns the IP address of the item with the given GUID.
-*    If the GUID isn't found, the function just returns NULL.
+*    Get the "connection_requested" flag of the item with the given GUID.
+*    Returns the boolean value of the flag
 *  Parameters:
 *    list ---> The input list
 *    guid ---> The GUID of the item to find */
-string_t get_ip(const list_t list, guid_t guid);
+bool_t get_connection_requested_flag(list_t list, guid_t guid);
+
+/* =====================================================================
+*  GetPartner
+*  =====================================================================
+*  Description:
+*    Returns the guid of the partner of the user with the given GUID.
+*  Parameters:
+*    list ---> The input list
+*    guid ---> The GUID of the item to find */
+guid_t get_partner(list_t list, guid_t guid);
+
+/* =====================================================================
+*  GetSocket
+*  =====================================================================
+*  Description:
+*    Returns the connection socket of the client with the given GUID.
+*    If the GUID isn't found, the function just returns -1.
+*  Parameters:
+*    list ---> The input list
+*    guid ---> The GUID of the item to find */
+int get_socket(const list_t list, guid_t guid);
 
 /* =====================================================================
 *  UsersListIterate

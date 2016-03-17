@@ -13,6 +13,7 @@ struct listElem
 {
 	string_t name;
 	guid_t guid;
+	guid_t partner_req;
 	bool_t available;
 	bool_t connection_requested;
 	int socket;
@@ -198,6 +199,15 @@ bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value)
 	return set_custom_flag(list, guid, target_value, TRUE);
 }
 
+// Set the chat partner of the user "guid" at "partner"
+bool_t set_partner(list_t list, guid_t guid, guid_t partner)
+{
+	nodePointer n = get_node(list, guid);
+	if (n == NULL) return FALSE;
+	n->partner_req = partner;
+	return TRUE;
+}
+
 // Set connection requested flag
 bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value)
 {
@@ -207,11 +217,27 @@ bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value)
 // Get the available flag of the client described by guid
 bool_t get_available_flag(const list_t list, guid_t guid)
 {
+	if (IS_EMPTY(list)) return FALSE;
 	nodePointer n = get_node(list, guid);
 	return n->available;
 }
 
-// Get IP address
+// Get the connection_requested flag of the client described by guid
+bool_t get_connection_requested_flag(list_t list, guid_t guid)
+{
+	if (IS_EMPTY(list)) return FALSE;
+	nodePointer n = get_node(list, guid);
+	return n->connection_requested;
+}
+
+// Get the partner guid
+guid_t get_partner(list_t list, guid_t guid)
+{
+	nodePointer n = get_node(list, guid);
+	return n->partner_req;
+}
+
+// Get client connection socket
 int get_socket(const list_t list, guid_t guid)
 {
 	// Input check

@@ -4,10 +4,10 @@
 #include <Ws2tcpip.h> /* InetPton */
 
 #include "client_util.h"
-#include "..\Tools\Client\client_list.h"
-#include "..\Tools\Shared\guid.h"
-#include "..\Tools\Shared\string_helper.h"
-#include "..\Tools\Shared\types.h"
+#include "ClientList\client_list.h"
+#include "..\Shared\guid.h"
+#include "..\Shared\string_helper.h"
+#include "..\Shared\types.h"
 #include "client_graphics.h"
 
 #define SERVER_IP "192.168.1.103"
@@ -59,6 +59,7 @@ static struct sockaddr_in get_socket_address()
 static void choose_name(SOCKET socket)
 {
 	int ret;
+	char* gets_ret;
 
 	// Allocate the buffers to use
 	char buffer[BUFFER_LENGTH], response[BUFFER_LENGTH];
@@ -67,8 +68,8 @@ static void choose_name(SOCKET socket)
 	while (1)
 	{
 		// Choose a name and ask the server if it's valid
-		ret = scanf("%1024s", buffer);
-		ERROR_HELPER(ret == -1, "Scanf failed");
+		gets_ret = fgets(buffer, BUFFER_LENGTH, stdin);
+		ERROR_HELPER(gets_ret == NULL, "fgets fails");
 
 		printf("Name chosen %s\nTrying to send it to the server\n", buffer);
 		// Sends the name to the server and waits for a response
@@ -113,7 +114,7 @@ static void load_users_list(SOCKET socket)
 	print_list(client_users_list, print_single_user);
 }
 
-guid pick_target_user()
+guid_t pick_target_user()
 {
 	printf("Pick a user to connect to: ");
 	bool_t done;
@@ -214,7 +215,7 @@ int main()
 
 	// Get the guid of the target user to connect to
 	guid_t target = pick_target_user();
-	send_to_server();
+	send_to_server(socket, serialize_guid(target));
 }
 
 HANDLE prepare_chat_window()
