@@ -1,8 +1,14 @@
+/* ============================================================================
+*  Queue.h
+* ============================================================================
+
+*  Authors:         (c) 2015 Sergio Pedri and Andrea Salvati */
+
 #ifndef QUEUE_H
 #define QUEUE_H
 
 // =================== Public types ====================
-typedef queue queue_t;
+typedef struct queueBase* queue_t;
 
 /* =====================================================================
 *  Functions
@@ -17,7 +23,7 @@ typedef queue queue_t;
 *  ---------------------------------------------------------------------
 *  Description:
 *    Creates an empty queue */
-queue_t create();
+queue_t create_queue();
 
 /* ---------------------------------------------------------------------
 *  Enqueue
@@ -27,7 +33,7 @@ queue_t create();
 *  Parameters:
 *    target ---> The queue to edit
 *    text ---> The content of the new item to add to the queue */
-void enqueue(queue target, char* text);
+void enqueue(queue_t target, char* text);
 
 /* ---------------------------------------------------------------------
 *  Dequeue
@@ -37,7 +43,7 @@ void enqueue(queue target, char* text);
 *    If the queue is empty, returns NULL
 *  Parameters:
 *    target ---> The queue to edit */
-char* dequeue(queue target);
+char* dequeue(queue_t target);
 
 /* ---------------------------------------------------------------------
 *  GetLength
@@ -46,7 +52,7 @@ char* dequeue(queue target);
 *    Returns the length of the given queue
 *  Parameters:
 *    queue ---> The input queue to analyze */
-size_t get_length(queue queue);
+size_t get_queue_length(queue_t queue);
 
 /* ---------------------------------------------------------------------
 *  Destroy
@@ -55,6 +61,6 @@ size_t get_length(queue queue);
 *    Deallocates a queue along with all its nodes and their content
 *  Parameters:
 *    queue ---> A pointer to the queue to destroy */
-void destroy(queue* queue);
+void destroy_queue(queue_t* queue);
 
 #endif

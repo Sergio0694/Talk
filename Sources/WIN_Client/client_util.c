@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "client_util.h"
-#include "..\Tools\Shared\types.h"
+#include "..\Shared\types.h"
 
 /* ============================================================================
 *  Generic functions

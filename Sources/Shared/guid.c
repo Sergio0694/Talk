@@ -43,7 +43,7 @@ guid_t new_guid()
 		clock_time |= rand();
 		clock_backup = clock_time;
 	}
-	else clock_backup = clock_time;	
+	else clock_backup = clock_time;
 
 	// Add the 32 bits of the clock time
 	int64_time |= clock_time;
@@ -136,7 +136,7 @@ string_t serialize_guid(guid_t guid)
 	// Get the serialized buffers
 	char* time = serialize_int64(guid->time);
 	char* random = serialize_int64(guid->random);
-	
+
 	// Concat them inside the main buffer
 	copy_serialized_int64_buffer(time, buffer);
 	copy_serialized_int64_buffer(random, buffer + 16);

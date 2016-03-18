@@ -7,11 +7,14 @@
 #ifndef SERVER_UTIL_H
 #define SERVER_UTIL_H
 
-#include "../Tools/Shared/types.h"
+#include "../Shared/types.h"
 
 // ==================== Generic macros ======================
 
+#define CLIENT_UNEXPECTED_CLOSE -1
 #define TIME_OUT_EXPIRED -2
+#define CONNECTION_REQUESTED -3
+#define UNEXPECTED_ERROR -4
 
 // ==================== Functions ======================
 
@@ -23,10 +26,10 @@
 *  Parameters:
 *    socket ---> The socket with an open connection to the client
 *    buf ---> The buffer that contains the message to send */
-void send_to_client(int socket, char* buf);
+int send_to_client(int socket, char* buf);
 
 /* =====================================================================
-*  ReceiveFromServer
+*  ReceiveFromClient
 *  =====================================================================
 *  Description:
 *    Receives a message from a socket
