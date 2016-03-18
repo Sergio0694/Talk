@@ -7,9 +7,9 @@
 #ifndef CLIENT_LIST_H
 #define CLIENT_LIST_H
 
-#include "..\Shared\guid.h"
-#include "..\Shared\types.h"
-#include "..\Shared\string_helper.h"
+#include "..\..\Shared\guid.h"
+#include "..\..\Shared\types.h"
+#include "..\..\Shared\string_helper.h"
 
 // =================== Public types ====================
 typedef struct clientListBase* client_list_t;

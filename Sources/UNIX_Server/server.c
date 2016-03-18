@@ -314,12 +314,12 @@ void* client_connection_handler(void* arg)
         free(temp);
         printf("Sending the users list..\n");
         ret = send_to_client(socketd, buf);
-        check_send_error(ret, args, guid);
+        check_send_error(ret, args, &guid);
         printf("Users list sent\n");
 
         // wait for the client connection choice
         ret = nonblocking_recv(socketd, buf, buf_len, guid);
-        check_recv_error(ret, args, guid);
+        check_recv_error(ret, args, &guid);
         if (ret == CONNECTION_REQUESTED)
         {
             // get the partner's name and his socket
@@ -385,7 +385,7 @@ void* client_connection_handler(void* arg)
         SEM_LOCK(sop, semid);
 
         int ret_temp = send_to_client(socketd, temp);
-        check_send_error(ret_temp, args, guid);
+        check_send_error(ret_temp, args, &guid);
         free(temp);
 
         // start the chat
