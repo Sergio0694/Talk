@@ -2,6 +2,7 @@
 #include <winsock2.h>
 #include <Windows.h>
 #include <Ws2tcpip.h> /* InetPton */
+#include <string.h> /* strncpy */
 
 #include "client_util.h"
 #include "ClientList\client_list.h"
@@ -114,20 +115,59 @@ static void load_users_list(SOCKET socket)
 	print_list(client_users_list, print_single_user);
 }
 
-guid_t pick_target_user()
+int read_integer()
+{
+	char buf[10];
+	const int maxIntCharLen = 10;
+	char* res = fgets(buf, maxIntCharLen, stdin);
+	ERROR_HELPER(res == NULL, "Error reading from the input buffer");
+	int i = 0;
+	while (buf[i] != '\0')
+	{
+		if (!(buf[i] >= 0 && buf[i] <= 9)) return -1;
+	}
+	int number = atoi(buf);
+	return number >= 0 ? number : -1;
+}
+
+guid_t* pick_target_user(SOCKET socket, string_t* username)
 {
 	printf("Pick a user to connect to: ");
 	bool_t done;
 	do
 	{
-		int target;
-		scanf("%d", &target);
-		guid_t* guid = try_get_guid(client_users_list, target);
-		if (guid == NULL)
+		// Wait for both the socket and the stdin
+		HANDLE stdin = GetStdinHandle(STD_INPUT_HANDLE);
+		HANDLE sources[] = { stdin, socket };
+		int ret = WaitForMultipleObjects(2, sources, FALSE, INFINITE);
+		ERROR_HELPER(ret == WAIT_FAILED || ret == WAIT_TIMEOUT,
+			"Error in the WaitForMultipleObjects call");
+		int index = ret - WAIT_OBJECT_0;
+
+		// Check if another user has started a chat session with this client
+		if (index == 1)
 		{
-			printf("The input index isn't valid\n");
+			char buffer[BUFFER_LENGTH];
+			int read = recv_from_server(socket, buffer, BUFFER_LENGTH);
+			*username = (char*)malloc(sizeof(char) * read);
+			strncpy(*username, buffer, read);
+			return NULL;
 		}
-		else return *guid;
+		else if (index == 0)
+		{
+			int target = read_integer();
+			if (target == -1)
+			{
+				printf("The selected index isn't valid");
+				continue;
+			}
+			guid_t* guid = try_get_guid(client_users_list, target);
+			if (guid == NULL)
+			{
+				printf("The input index isn't valid\n");
+			}
+			else return guid;
+		}
 	} while (!done);
 }
 
@@ -137,54 +177,60 @@ void send_target_guid(const guid_t guid)
 	send_to_server(socket, serialized);
 }
 
-void chat(SOCKET socket)
+void chat(SOCKET socket, string_t username)
 {
+	// Open the two console windows
+	HANDLE messageConsole = prepare_chat_window();
+	HANDLE consoleBuffer = get_console_screen_buffer_handle();
+	write_console_message(
+		"/* ========================\n*  CHAT WINDOW\n*  ====================== */\n\n",
+		consoleBuffer, DARK_GREEN);
+
 	while (TRUE)
 	{
-		// Initialize the input set for the select function
-		fd_set input;
-		FD_SET(stdin, &input);
-		FD_SET(socket, &input);
-
-		// Prepare the timeout
-		struct timeval timeout;
-		timeout.tv_sec = 120;
-		timeout.tv_usec = 0;
-
-		// Call the select
-		int ret = select(0, &input, NULL, NULL, &timeout);
-
-		// Timeout expired
-		if (ret == 0) // TODO
-		{
-
-		}
-
-		// Error handling
-		if (ret == SOCKET_ERROR)
-		{
-			int error = WSAGetLastError();
-			if (error == WSAEINTR) continue;
-			// TODO: close the thread
-		}
+		// Wait for the stdin and the socket
+		HANDLE stdin = GetStdinHandle(STD_INPUT_HANDLE);
+		HANDLE sources[] = { stdin, socket };
+		int ret = WaitForMultipleObjects(2, sources, FALSE, INFINITE);
+		ERROR_HELPER(ret == WAIT_FAILED || ret == WAIT_TIMEOUT,
+			"Error in the WaitForMultipleObjects call");
+		int index = ret - WAIT_OBJECT_0;
 
 		// Check if there is a new message to display
-		if (FD_ISSET(socket, &input) != 0)
+		if (index == 1)
 		{
+			// Receive the message from the server
 			char buffer[BUFFER_LENGTH];
 			int read = recv_from_server(socket, buffer, BUFFER_LENGTH);
-			// TODO: print message
-		}
 
-		// Send the new message if necessary
-		if (FD_ISSET(stdin, &input) != 0)
+			// Calculate the username to display
+			char tmp[2] = { buffer[0], '\0' };
+			int userIndex = atoi(tmp);
+
+			// Display the message in the target console
+			write_console_message("[", consoleBuffer, DARK_TEXT);
+			string_t displayedName = userIndex == 0 ? "Me" : username;
+			write_console_message(displayedName, consoleBuffer, RED_TEXT);
+			write_console_message("] ", consoleBuffer, DARK_TEXT);
+			write_console_message(buffer + 1, consoleBuffer, WHITE_TEXT);
+			write_console_message("\n", consoleBuffer, WHITE_TEXT);
+			
+		}		
+		else if (index == 0)
 		{
+			// Send the new message if necessary
 			char message[BUFFER_LENGTH];
 			char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
 			if (gets_ret == NULL) continue;
 			send_to_server(socket, message);
 		}
 	}
+
+	// Close the message console
+	BOOL close_res = CloseHandle(consoleBuffer);
+	ERROR_HELPER(!close_res, "Error closing the console buffer");
+	close_res = CloseHandle(messageConsole);
+	ERROR_HELPER(!close_res, "Error closing the chat console");
 }
 
 int main()
@@ -214,8 +260,13 @@ int main()
 	load_users_list(socket);
 
 	// Get the guid of the target user to connect to
-	guid_t target = pick_target_user();
-	send_to_server(socket, serialize_guid(target));
+	string_t username = NULL;
+	guid_t* target = pick_target_user(socket, &username);
+	if (target != NULL)
+	{
+		send_to_server(socket, serialize_guid(target));
+	}
+	else chat(socket, username);
 }
 
 HANDLE prepare_chat_window()
@@ -252,15 +303,27 @@ HANDLE get_console_screen_buffer_handle(HANDLE console_handle)
 	return ret;
 }
 
-void write_console_message(string_t message, HANDLE console_buffer)
+void write_console_message(string_t message, HANDLE hConsole_buffer, int color)
 {
+	// Set the desied color for the message to display
+	SetConsoleTextAttribute(hConsole_buffer, color);
+
+	// Try to write the message to the target console buffer
 	int len = strlen(message);
-	DWORD written = 0;
+	DWORD written = 0;	
 	BOOL res = WriteConsole(
 		console_buffer, /* Console buffer handle */
 		(void*)message, /* Message buffer */
 		len, /* Number of characters to write */
 		(LPDWORD)&written, /* Number of written characters */
 		NULL /* Reserved */);
+
+	// Check for errors
 	ERROR_HELPER(res == 0, "Error writing into the target console buffer");
+	ERROR_HELPER(written != len, "The message wasn't written completely");
+}
+
+void write_message_console_title(HANDLE console_buffer)
+{
+
 }
