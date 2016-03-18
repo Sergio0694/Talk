@@ -223,7 +223,7 @@ bool_t get_available_flag(const list_t list, guid_t guid)
 }
 
 // Get the connection_requested flag of the client described by guid
-bool_t get_connection_requested_flag(list_t list, guid_t guid)
+bool_t get_connection_requested_flag(const list_t list, guid_t guid)
 {
 	if (IS_EMPTY(list)) return FALSE;
 	nodePointer n = get_node(list, guid);
@@ -231,7 +231,7 @@ bool_t get_connection_requested_flag(list_t list, guid_t guid)
 }
 
 // Get the partner guid
-guid_t get_partner(list_t list, guid_t guid)
+guid_t get_partner(const list_t list, guid_t guid)
 {
 	nodePointer n = get_node(list, guid);
 	return n->partner_req;
@@ -249,6 +249,14 @@ int get_socket(const list_t list, guid_t guid)
 
 	// If the GUID has been found, return the corresponding IP address
 	return pointer->socket;
+}
+
+// Get the name of the client with the given guid
+string_t get_name(const list_t list, guid_t guid)
+{
+	nodePointer n = get_node(list, guid);
+	if (n == NULL) return NULL;
+	return n->name;
 }
 
 // Iterate
@@ -280,6 +288,12 @@ string_t serialize_list(const list_t list)
 	nodePointer pointer = list->head;
 	while (pointer != NULL)
 	{
+		if (!(pointer->available))
+		{
+			pointer = pointer->next;
+			continue;
+		}
+
 		// Get the length of the user name and its string terminator
 		int name_len = strlen(pointer->name) + 1;
 

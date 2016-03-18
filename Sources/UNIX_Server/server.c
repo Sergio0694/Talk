@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <string.h>     /* strerror() and strlen() */
 #include <pthread.h>
+#include <signal.h>
 #include <arpa/inet.h>  /* htons(), ntohs() and inet_ntop() */
 #include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 #include <sys/socket.h>
@@ -8,13 +9,12 @@
 #include <sys/types.h>  /* key_t, pthread_t */
 #include <sys/ipc.h>    /* IPC_CREAT, IPC_EXCL, IPC_NOWAIT */
 #include <sys/sem.h>
-#include <signal.h>
+#include <sys/select.h>
 
 #include "../Shared/guid.h"
 #include "UsersList/users_list.h"
 #include "../Shared/string_helper.h"
 #include "sem_util.h"
-#include "chat_handler.h"
 #include "server_util.h"
 #include "server.h"
 
@@ -61,19 +61,58 @@ static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 }
 
 // Performs a check on the return codes from recv_from_client function
-static inline void check_recv_error(int ret, conn_thread_args_t* args)
+static inline void check_recv_error(int ret, conn_thread_args_t* args, guid_t* guid)
 {
-    if (ret == TIME_OUT_EXPIRED) close_and_cleanup(args, "The client timed out");
+    int semid = args->semid;
+    struct sembuf sop = { 0 };
+
+    if (ret == TIME_OUT_EXPIRED)
+    {
+        if (guid != NULL)
+        {
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, *guid);
+            SEM_RELEASE(sop, semid);
+        }
+        close_and_cleanup(args, "The client timed out");
+    }
     else if (ret == CLIENT_UNEXPECTED_CLOSE)
+    {
+        if (guid != NULL)
+        {
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, *guid);
+            SEM_RELEASE(sop, semid);
+        }
         close_and_cleanup(args, "Unexpected close from client");
-    else if (ret == UNEXPECTED_ERROR) close_and_cleanup(args, "Cannot read from socket");
+    }
+    else if (ret == UNEXPECTED_ERROR)
+    {
+        if (guid != NULL)
+        {
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, *guid);
+            SEM_RELEASE(sop, semid);
+        }
+        close_and_cleanup(args, "Cannot read from socket");
+    }
 }
 
 // Performs a check on the return codes from send_to_client function
-static inline void check_send_error(int ret, conn_thread_args_t* args)
+static inline void check_send_error(int ret, conn_thread_args_t* args, guid_t* guid)
 {
+    int semid = args->semid;
+    struct sembuf sop = { 0 };
+
     if (ret < 0)
     {
+        if (guid != NULL)
+        {
+            SEM_LOCK(sop, semid);
+            remove_guid(users_list, *guid);
+            SEM_RELEASE(sop, semid);
+        }
+
         if (errno == EPIPE) close_and_cleanup(args, "EPIPE error received");
         close_and_cleanup(args, "Cannot send the message");
     }
@@ -82,29 +121,29 @@ static inline void check_send_error(int ret, conn_thread_args_t* args)
 static void name_pickup(conn_thread_args_t* args, char** name)
 {
     int ret, name_len;
-    char buf[1024];
+    char buf[BUFFER_LENGTH];
     size_t buf_len = sizeof(buf);
 
     int socketd = args->sock_desc;
 
     printf("Waiting for name recv\n");
     name_len = recv_from_client(socketd, buf, buf_len);
-    check_recv_error(name_len, args);
+    check_recv_error(name_len, args, NULL);
     while (name_len == 0)
     {
         sprintf(buf, "0Please choose a non-empty name: ");
         ret = send_to_client(socketd, buf);
-        check_send_error(ret, args);
+        check_send_error(ret, args, NULL);
         name_len = recv_from_client(socketd, buf, buf_len);
-        check_recv_error(name_len, args);
+        check_recv_error(name_len, args, NULL);
     }
     while (!name_validation(buf, name_len))
     {
         sprintf(buf, "0Please choose a name that does not contains | or ~ character: ");
         ret = send_to_client(socketd, buf);
-        check_send_error(ret, args);
+        check_send_error(ret, args, NULL);
         name_len = recv_from_client(socketd, buf, buf_len);
-        check_recv_error(name_len, args);
+        check_recv_error(name_len, args, NULL);
     }
     printf("Correct name received ");
     *name = (char*)malloc(sizeof(char) * (name_len));
@@ -149,6 +188,52 @@ int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
 
 /* ============================= */
 
+int chat_handler(int src, int dst, int semid)
+{
+    // aux variables
+    char buf[BUFFER_LENGTH], temp[BUFFER_LENGTH];
+    int buf_len = sizeof(buf), ret;
+
+    // timeval for the select timeout
+    struct timeval tv;
+    set_timeval(&tv, 120, 0);
+
+    // sync stuff for the chat will be handled by semaphore two
+    struct sembuf sop = { 0 };
+    sop.sem_num = 1;
+
+    while (TRUE)
+    {
+        // create the set for the select call
+        fd_set readfdset;
+        FD_ZERO(&readfdset);
+        FD_SET(src, &readfdset);
+
+        // wait for messages from the source socket
+        ret = select(1, &readfdset, NULL, NULL, &tv);
+        if (ret == -1 && errno == EINTR) continue;
+        if (ret == -1) return ret;
+        if (ret == 0) return TIME_OUT_EXPIRED;
+
+        SEM_LOCK(sop, semid);
+
+        ret = recv_from_client(src, temp, buf_len);
+        if (ret < 0) return ret;
+
+        // add to the received message a 0 to represent the source and
+        // a 1 to represent the partner
+        snprintf(buf, buf_len, "0%s", temp);
+        ret = send_to_client(src, buf);
+        if (ret < 0) return ret;
+        snprintf(buf, buf_len, "1%s", temp);
+        ret = send_to_client(dst, buf);
+        if (ret < 0) return ret;
+
+        SEM_RELEASE(sop, semid);
+    }
+
+}
+
 void* client_connection_handler(void* arg)
 {
     printf("Handling connection\n");
@@ -160,11 +245,10 @@ void* client_connection_handler(void* arg)
     struct sockaddr_in* client_addr = args->address;
 
     // aux variables
-    char buf[1024], client_ip[INET_ADDRSTRLEN];
+    char buf[BUFFER_LENGTH], client_ip[INET_ADDRSTRLEN];
     size_t buf_len = sizeof(buf);
     int ret;
     string_t temp, name;
-    suid_t chat_users[2];
 
     // chosen target information
     guid_t chosen_guid;
@@ -181,7 +265,7 @@ void* client_connection_handler(void* arg)
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
     printf("Sending the Welcome message -- The client should see: %s\n", buf);
     ret = send(socketd, buf, strlen(buf), 0);
-    check_send_error(ret, args);
+    check_send_error(ret, args, NULL);
     printf("Welcome message sent on %d socket\n", socketd);
 
     // set a 2 minutes timeout for the socket operations
@@ -199,7 +283,7 @@ void* client_connection_handler(void* arg)
     free(temp);
     printf("Sending the generated guid %s\n", buf + 1);
     ret = send_to_client(socketd, buf);
-    check_send_error(ret, args);
+    check_send_error(ret, args, NULL);
     printf("Guid sent\n");
 
     // sem_num = 0 --> operate on semaphore 0
@@ -230,28 +314,15 @@ void* client_connection_handler(void* arg)
         free(temp);
         printf("Sending the users list..\n");
         ret = send_to_client(socketd, buf);
-        if (ret < 0)
-        {
-            SEM_LOCK(sop, semid);
-            remove_guid(users_list, guid);
-            SEM_RELEASE(sop, semid);
-        }
-        check_send_error(ret, args);
+        check_send_error(ret, args, guid);
         printf("Users list sent\n");
 
         // wait for the client connection choice
         ret = nonblocking_recv(socketd, buf, buf_len, guid);
-        if (ret < 0 && ret != CONNECTION_REQUESTED)
-        {
-            // remove the user from the users list
-            SEM_LOCK(sop, semid);
-            remove_guid(users_list, guid);
-            SEM_RELEASE(sop, semid);
-        }
-        check_recv_error(ret, args);
+        check_recv_error(ret, args, guid);
         if (ret == CONNECTION_REQUESTED)
         {
-            // get the partner socket
+            // get the partner's name and his socket
             SEM_LOCK(sop, semid);
             chosen_guid = get_partner(users_list, guid);
             chosen_socket = get_socket(users_list, chosen_guid);
@@ -276,15 +347,6 @@ void* client_connection_handler(void* arg)
             chosen_guid = deserialize_guid(buf);
             chosen_socket = get_socket(users_list, chosen_guid);
         }
-
-        // build the struct for the chat handler
-        chat_users[0].socket = socketd;
-        chat_users[0].guid = guid;
-        chat_users[1].socket = chosen_socket;
-        chat_users[1].guid = chosen_guid;
-        chat_args_t chat_args;
-        chat_args.suid[0] = chat_users[0];
-        chat_args.suid[1] = chat_users[1];
 
         if (ret != CONNECTION_REQUESTED)
         {
@@ -318,8 +380,16 @@ void* client_connection_handler(void* arg)
             SEM_RELEASE(sop, semid);
         }
 
+        SEM_LOCK(sop, semid);
+        temp = get_name(users_list, chosen_guid);
+        SEM_LOCK(sop, semid);
+
+        int ret_temp = send_to_client(socketd, temp);
+        check_send_error(ret_temp, args, guid);
+        free(temp);
+
         // start the chat
-        chat_handler(chat_args);
+        chat_handler(socketd, chosen_socket, semid);
 
     } // end of while
 }
@@ -340,13 +410,16 @@ int main()
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
-    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREAT | 0660);
+    int semid = semget(IPC_PRIVATE, /* semnum = */ 2, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
-    // initialize the semaphore to 1
+    // initialize the two semaphores to 1 -- the first one is used to synchronize the access to the
+    // users list, the second one is used to synchronize the socket access
     union semun arg;
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
+    ERROR_HELPER(ret, "Cannot initialize the semaphore");
+    ret = semctl(semid, 1, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */
