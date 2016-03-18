@@ -7,7 +7,7 @@
 // clear_screen
 // ---------------------------------------------------------------------
 // Fills the console with blank spaces to clear its content
-void clear_screen()
+/*void clear_screen()
 {
 	DWORD n, size;
 	COORD coord = { 0, 0 };
@@ -16,13 +16,13 @@ void clear_screen()
 	GetConsoleScreenBufferInfo(st, &csbiInfo);
 	FillConsoleOutputAttribute(st, csbiInfo.wAttributes, size, coord, &n);
 	SetConsoleCursorPosition(st, coord);
-}
+}*/
 
 // ---------------------------------------------------------------------
 // changeColor
 // ---------------------------------------------------------------------
 // Sets a new color combination for each character foreground/background
-void change_console_color(int color)
+/*void change_console_color(int color)
 {
 	SetConsoleTextAttribute(st, color | color);
-}
+}*/

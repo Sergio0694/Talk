@@ -53,6 +53,6 @@ client_list_t deserialize_client_list(const string_t buffer, const guid_t guid);
 *  Parameters:
 *    list ---> The list to print
 *    function ---> The callback function to invoke to print each item */
-void print_list(const client_list_t list, void(*function)(string_t));
+void print_list(const client_list_t list, void(*function)(int, string_t));
 
 #endif
