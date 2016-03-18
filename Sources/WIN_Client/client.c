@@ -2,6 +2,7 @@
 #include <winsock2.h>
 #include <Windows.h>
 #include <Ws2tcpip.h> /* InetPton */
+#include <string.h> /* strncpy */
 
 #include "client_util.h"
 #include "ClientList\client_list.h"
@@ -114,20 +115,59 @@ static void load_users_list(SOCKET socket)
 	print_list(client_users_list, print_single_user);
 }
 
-guid_t pick_target_user()
+int read_integer()
+{
+	char buf[10];
+	const int maxIntCharLen = 10;
+	char* res = fgets(buf, maxIntCharLen, stdin);
+	ERROR_HELPER(res == NULL, "Error reading from the input buffer");
+	int i = 0;
+	while (buf[i] != '\0')
+	{
+		if (!(buf[i] >= 0 && buf[i] <= 9)) return -1;
+	}
+	int number = atoi(buf);
+	return number >= 0 ? number : -1;
+}
+
+guid_t* pick_target_user(SOCKET socket, string_t* username)
 {
 	printf("Pick a user to connect to: ");
 	bool_t done;
 	do
 	{
-		int target;
-		scanf("%d", &target);
-		guid_t* guid = try_get_guid(client_users_list, target);
-		if (guid == NULL)
+		// Wait for both the socket and the stdin
+		HANDLE stdin = GetStdinHandle(STD_INPUT_HANDLE);
+		HANDLE sources[] = { stdin, socket };
+		int ret = WaitForMultipleObjects(2, sources, FALSE, INFINITE);
+		ERROR_HELPER(ret == WAIT_FAILED || ret == WAIT_TIMEOUT,
+			"Error in the WaitForMultipleObjects call");
+		int index = ret - WAIT_OBJECT_0;
+
+		// Check if another user has started a chat session with this client
+		if (index == 1)
 		{
-			printf("The input index isn't valid\n");
+			char buffer[BUFFER_LENGTH];
+			int read = recv_from_server(socket, buffer, BUFFER_LENGTH);
+			*username = (char*)malloc(sizeof(char) * read);
+			strncpy(*username, buffer, read);
+			return NULL;
 		}
-		else return *guid;
+		else if (index == 0)
+		{
+			int target = read_integer();
+			if (target == -1)
+			{
+				printf("The selected index isn't valid");
+				continue;
+			}
+			guid_t* guid = try_get_guid(client_users_list, target);
+			if (guid == NULL)
+			{
+				printf("The input index isn't valid\n");
+			}
+			else return guid;
+		}
 	} while (!done);
 }
 
@@ -220,8 +260,13 @@ int main()
 	load_users_list(socket);
 
 	// Get the guid of the target user to connect to
-	guid_t target = pick_target_user();
-	send_to_server(socket, serialize_guid(target));
+	string_t username = NULL;
+	guid_t* target = pick_target_user(socket, &username);
+	if (target != NULL)
+	{
+		send_to_server(socket, serialize_guid(target));
+	}
+	else chat(socket, username);
 }
 
 HANDLE prepare_chat_window()
