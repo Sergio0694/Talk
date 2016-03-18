@@ -27,6 +27,15 @@ typedef struct clientListBase* client_list_t;
 guid_t* try_get_guid(const client_list_t list, const int index);
 
 /* =====================================================================
+*  DestroyUserList
+*  =====================================================================
+*  Description:
+*    Deallocates a list and all its nodes
+*  Parameters:
+*    list ---> The target list to free */
+void destroy_user_list(client_list_t list);
+
+/* =====================================================================
 *  DeserializeClientList
 *  =====================================================================
 *  Description:

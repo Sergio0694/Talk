@@ -16,7 +16,9 @@
 #define BUFFER_LENGTH 1024
 
 guid_t client_guid;
-client_list_t client_users_list;
+client_list_t client_users_list = NULL;
+HANDLE messageConsole = NULL;
+HANDLE consoleBuffer = NULL;
 
 // Initializes the WINSOCKET API
 static void initialize_socket_API()
@@ -180,8 +182,8 @@ void send_target_guid(const guid_t guid)
 void chat(SOCKET socket, string_t username)
 {
 	// Open the two console windows
-	HANDLE messageConsole = prepare_chat_window();
-	HANDLE consoleBuffer = get_console_screen_buffer_handle();
+	messageConsole = prepare_chat_window();
+	consoleBuffer = get_console_screen_buffer_handle();
 	write_console_message(
 		"/* ========================\n*  CHAT WINDOW\n*  ====================== */\n\n",
 		consoleBuffer, DARK_GREEN);
@@ -214,8 +216,8 @@ void chat(SOCKET socket, string_t username)
 			write_console_message("] ", consoleBuffer, DARK_TEXT);
 			write_console_message(buffer + 1, consoleBuffer, WHITE_TEXT);
 			write_console_message("\n", consoleBuffer, WHITE_TEXT);
-			
-		}		
+
+		}
 		else if (index == 0)
 		{
 			// Send the new message if necessary
@@ -233,8 +235,43 @@ void chat(SOCKET socket, string_t username)
 	ERROR_HELPER(!close_res, "Error closing the chat console");
 }
 
+BOOL CtrlHandler(DWORD fdwCtrlType)
+{
+	// Skip other signals
+	if (fwdCtrlType != CTRL_C_EVENT) return FALSE;
+
+	// Cleanup and close everything
+	if (socket != NULL)
+	{
+		int ret = closesocket(socket);
+		ERROR_HELPER(ret != 0, "Error while closing the socket");
+	}
+
+	// Deallocate the user list
+	destroy_user_list(client_users_list);
+
+	// Close the open console and handles, if necessary
+	if (consoleBuffer != NULL)
+	{
+		BOOL close_res = CloseHandle(consoleBuffer);
+		ERROR_HELPER(!close_res, "Error closing the console buffer");
+	}
+	if (messageConsole != NULL)
+	{
+		close_res = CloseHandle(messageConsole);
+		ERROR_HELPER(!close_res, "Error closing the chat console");
+	}
+
+	// Confirm and return the result
+	printf("SHUT DOWN completed");
+	return TRUE;
+}
+
 int main()
 {
+	// Add the Ctrl + C signal handler
+	SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
+
 	// Socket API initialization
 	initialize_socket_API();
 
@@ -256,17 +293,31 @@ int main()
 	// Login
 	choose_name(socket);
 
-	// Print the users list
-	load_users_list(socket);
-
-	// Get the guid of the target user to connect to
-	string_t username = NULL;
-	guid_t* target = pick_target_user(socket, &username);
-	if (target != NULL)
+	// Main client loop
+	while (TRUE)
 	{
-		send_to_server(socket, serialize_guid(target));
+		// Print the users list
+		load_users_list(socket);
+
+		// Get the guid of the target user to connect to
+		string_t username = NULL;
+		guid_t* target = pick_target_user(socket, &username);
+		if (target != NULL)
+		{
+			send_to_server(socket, serialize_guid(target));
+			char buf[1024];
+			recv_from_server(socket, buf, 1);
+			char tmp[2] = { buf[0], '\0' };
+			int resultCode = atoi(tmp);
+			if (resultCode == 1)
+			{
+				recv_from_server(socket, buf, 1024);
+				chat(socket, buf + 1);
+			}
+			else continue;
+		}
+		else chat(socket, username);
 	}
-	else chat(socket, username);
 }
 
 HANDLE prepare_chat_window()
@@ -310,7 +361,7 @@ void write_console_message(string_t message, HANDLE hConsole_buffer, int color)
 
 	// Try to write the message to the target console buffer
 	int len = strlen(message);
-	DWORD written = 0;	
+	DWORD written = 0;
 	BOOL res = WriteConsole(
 		console_buffer, /* Console buffer handle */
 		(void*)message, /* Message buffer */
