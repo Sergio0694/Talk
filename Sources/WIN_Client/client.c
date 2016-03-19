@@ -92,7 +92,8 @@ static void initialize_socket_API()
 	if (startup_ret == 0) return;
 
 	// Display an error message and exit the process
-	ERROR_HELPER(startup_ret == WSAVERNOTSUPPORTED, "The 2.2 SOCKET APIs are not supported on your system");
+	ERROR_HELPER(startup_ret == WSAVERNOTSUPPORTED,
+		"The 2.2 SOCKET APIs are not supported on your system");
 	ERROR_HELPER(startup_ret != 0, "There was an error during the SOCKET API initialization");
 }
 
@@ -199,8 +200,8 @@ guid_t* pick_target_user(string_t* username)
 	do
 	{
 		// Wait for both the socket and the stdin
-		HANDLE stdin = GetStdHandle(STD_INPUT_HANDLE);
-		HANDLE sources[] = { stdin, (HANDLE)socketd };
+		HANDLE hstdin = GetStdHandle(STD_INPUT_HANDLE);
+		HANDLE sources[] = { hstdin, (HANDLE)socketd };
 		int ret = WaitForMultipleObjects(2, sources, FALSE, INFINITE);
 		ERROR_HELPER(ret == WAIT_FAILED || ret == WAIT_TIMEOUT,
 			"Error in the WaitForMultipleObjects call");
@@ -251,8 +252,8 @@ void chat(string_t username)
 	while (TRUE)
 	{
 		// Wait for the stdin and the socket
-		HANDLE stdin = GetStdHandle(STD_INPUT_HANDLE);
-		HANDLE sources[] = { stdin, (HANDLE)socketd };
+		HANDLE hstdin = GetStdHandle(STD_INPUT_HANDLE);
+		HANDLE sources[] = { hstdin, (HANDLE)socketd };
 		int ret = WaitForMultipleObjects(2, sources, FALSE, INFINITE);
 		ERROR_HELPER(ret == WAIT_FAILED || ret == WAIT_TIMEOUT,
 			"Error in the WaitForMultipleObjects call");

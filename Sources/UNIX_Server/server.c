@@ -161,6 +161,7 @@ int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
     int ret;
     int bytes_read = 0;
 
+    // getc(stdin); // test
     while (bytes_read <= buf_len)
     {
         ret = recv(socket, buf + bytes_read, 1, MSG_DONTWAIT);
