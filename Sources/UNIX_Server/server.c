@@ -161,13 +161,13 @@ int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
     int ret;
     int bytes_read = 0;
 
-    // getc(stdin); // test
+    //getc(stdin); // test
     while (bytes_read <= buf_len)
     {
         ret = recv(socket, buf + bytes_read, 1, MSG_DONTWAIT);
         if (ret == -1 && errno == EAGAIN)
         {
-            // continously che for connection request by othe client
+            // continously che for connection request by other client
             if (get_connection_requested_flag(users_list, guid)) return CONNECTION_REQUESTED;
             continue;
         }
@@ -221,6 +221,8 @@ int chat_handler(int src, int dst, int semid)
         ret = recv_from_client(src, temp, buf_len);
         if (ret < 0) return ret;
 
+        if (strncmp(temp, "QUIT", 4) == 0) break;
+
         // add to the received message a 0 to represent the source and
         // a 1 to represent the partner
         snprintf(buf, buf_len, "0%s", temp);
@@ -232,7 +234,7 @@ int chat_handler(int src, int dst, int semid)
 
         SEM_RELEASE(sop, semid);
     }
-
+    return 0;
 }
 
 void* client_connection_handler(void* arg)
@@ -320,6 +322,7 @@ void* client_connection_handler(void* arg)
 
         // wait for the client connection choice
         ret = nonblocking_recv(socketd, buf, buf_len, guid);
+        //ret = recv_from_client(socketd, buf, buf_len);
         check_recv_error(ret, args, &guid);
         if (ret == CONNECTION_REQUESTED)
         {

@@ -1,7 +1,7 @@
 # Directories
-SRVDIR = ../Sources/UNIX_Server
-LISTDIR = ../Sources/UNIX_Server/UsersList
-SHDIR = ../Sources/Shared
+SRVDIR = ../../Sources/UNIX_Server
+LISTDIR = ../../Sources/UNIX_Server/UsersList
+SHDIR = ../../Sources/Shared
 
 # Compiler
 CC = gcc

@@ -2,8 +2,9 @@
 #include <winsock2.h>
 #include <Windows.h>
 #include <Winbase.h>
-#include <Ws2tcpip.h> /* InetPton */
-#include <string.h> /* strncpy */
+#include <Ws2tcpip.h> /* InetPton() */
+#include <string.h>   /* strncpy() */
+#include <ctype.h>    /* isdigit() */
 
 #include "client_util.h"
 #include "ClientList\client_list.h"
@@ -15,6 +16,7 @@
 #define SERVER_IP "192.168.1.103"
 #define PORT_NUMBER 25000
 #define BUFFER_LENGTH 1024
+//#define REFRESH -2
 
 guid_t client_guid;
 client_list_t client_users_list = NULL;
@@ -129,7 +131,7 @@ static void choose_name()
 	char buffer[BUFFER_LENGTH], response[BUFFER_LENGTH];
 
 	// Loop until we get a valid username
-	while (1)
+	while (TRUE)
 	{
 		// Choose a name and ask the server if it's valid
 		gets_ret = fgets(buffer, BUFFER_LENGTH, stdin);
@@ -184,12 +186,14 @@ int read_integer()
 	const int maxIntCharLen = 10;
 	char* res = fgets(buf, maxIntCharLen, stdin);
 	ERROR_HELPER(res == NULL, "Error reading from the input buffer");
+	//if (strncmp(buf, "R", 1) == 0) return REFRESH;
 	int i = 0;
-	while (buf[i] != '\0')
+	while (buf[i] != '\n')
 	{
-		if (!(buf[i] >= 0 && buf[i] <= 9)) return -1;
+		if (!isdigit((int)buf[i++])) return -1;
 	}
 	int number = atoi(buf);
+	printf("%d\n", number);
 	return number >= 0 ? number : -1;
 }
 
@@ -221,7 +225,7 @@ guid_t* pick_target_user(string_t* username)
 			int target = read_integer();
 			if (target == -1)
 			{
-				printf("The selected index isn't valid");
+				printf("The selected index isn't valid\n");
 				continue;
 			}
 			guid_t* guid = try_get_guid(client_users_list, target);
@@ -326,7 +330,7 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
 	}
 
 	// Confirm and return the result
-	printf("SHUT DOWN completed");
+	printf("SHUT DOWN completed\n");
 	return TRUE;
 }
 
