@@ -17,7 +17,7 @@
 *  =====================================================================
 *  Description:
 *    Fills the console with blank spaces to clear its content */
-void clear_screen()
+/*void clear_screen()
 {
 	DWORD n, size;
 	COORD coord = { 0, 0 };
@@ -26,7 +26,7 @@ void clear_screen()
 	GetConsoleScreenBufferInfo(st, &csbiInfo);
 	FillConsoleOutputAttribute(st, csbiInfo.wAttributes, size, coord, &n);
 	SetConsoleCursorPosition(st, coord);
-}
+}*/
 
 /* ==================== Change color ===================== */
 
@@ -43,9 +43,9 @@ void clear_screen()
 *  =====================================================================
 *  Description:
 *    Changes the color in use when printing into the stdout buffer */
-void change_console_color(int color)
+/*void change_console_color(int color)
 {
 	SetConsoleTextAttribute(st, color);
-}
+}*/
 
 #endif
