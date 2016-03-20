@@ -32,7 +32,7 @@ HANDLE prepare_chat_window()
 	PROCESS_INFORMATION p_info;
 	SecureZeroMemory((PVOID)&p_info, sizeof(p_info));
 	BOOL res = CreateProcess(
-		NULL, /* Application name */
+		"C:\\Windows\\system32\\cmd.exe", /* Application name */
 		NULL, /* Command line */
 		NULL, /* Process attributes */
 		NULL, /* Thread attributes */
@@ -173,6 +173,7 @@ static void load_users_list()
 	printf("Waiting for the users list\n");
 	recv_from_server(socketd, buffer, BUFFER_LENGTH);
 	printf("List received\n");
+	printf("DEBUG: %s\n", buffer);
 	client_users_list = deserialize_client_list(buffer, client_guid);
 
 	// Print the users list
@@ -241,12 +242,14 @@ guid_t* pick_target_user(string_t* username)
 void send_target_guid(const guid_t guid)
 {
 	string_t serialized = serialize_guid(guid);
+	serialized = strcat(serialized, "\n");
 	send_to_server(socketd, serialized);
 }
 
 void chat(string_t username)
 {
 	// Open the two console windows
+	printf("DEBUG opening new console ...\n");
 	messageConsole = prepare_chat_window();
 	consoleBuffer = get_console_screen_buffer_handle(messageConsole);
 	write_console_message(
@@ -331,7 +334,8 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
 
 	// Confirm and return the result
 	printf("SHUT DOWN completed\n");
-	return TRUE;
+	exit(EXIT_SUCCESS);
+	//return TRUE;
 }
 
 int main()

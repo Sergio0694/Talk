@@ -14,11 +14,11 @@ void send_to_server(SOCKET socket, char* buf)
 	// Calculates the length of the message to send
 	int sent_bytes = 0;
 	size_t msg_len = strlen(buf);
-	printf("Message len: %d\n", msg_len);
+	printf("DEBUG message len: %d\n", msg_len);
 
 	// Add a \n character instead of string terminator
-	buf[msg_len++] = '\n';
-	printf("%s", buf);
+	//buf[msg_len++] = '\n';
+	printf("DEBUG message: %s\n", buf);
 
 	while (TRUE)
 	{

@@ -167,7 +167,7 @@ static nodePointer get_node(list_t list, guid_t guid)
 	while (pointer != NULL)
 	{
 		// If the GUIDs match, return the current node
-		if (pointer->guid == guid) return pointer;
+		if (guid_equals(pointer->guid, guid)) return pointer;
 		pointer = pointer->next;
 	}
 
@@ -294,6 +294,7 @@ string_t serialize_list(const list_t list)
 			continue;
 		}
 
+		printf("DEBUG name: %s\n", pointer->name);
 		// Get the length of the user name and its string terminator
 		int name_len = strlen(pointer->name) + 1;
 

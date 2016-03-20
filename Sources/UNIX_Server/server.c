@@ -165,6 +165,7 @@ int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
     while (bytes_read <= buf_len)
     {
         ret = recv(socket, buf + bytes_read, 1, MSG_DONTWAIT);
+        //getc(stdin);
         if (ret == -1 && errno == EAGAIN)
         {
             // continously che for connection request by other client
@@ -175,15 +176,16 @@ int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
         if (ret == -1 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED;
         if (ret == 0) return CLIENT_UNEXPECTED_CLOSE;
         if (ret < 0) return UNEXPECTED_ERROR;
-
+        printf("%c", buf[bytes_read]);
         if (buf[bytes_read] == '\n') break;
-
+        //printf("BBBBBB\n" );
         // if there is no \n the message is truncated when is length is buf_len
         if (bytes_read == buf_len) break;
         bytes_read += ret;
     }
-
+    //printf("CCCCCC\n" );
     buf[bytes_read++] = STRING_TERMINATOR;
+    //printf("\nDDDDDDD\n" );
     return bytes_read;
 }
 
@@ -239,7 +241,7 @@ int chat_handler(int src, int dst, int semid)
 
 void* client_connection_handler(void* arg)
 {
-    printf("Handling connection\n");
+    printf("DEBUG handling connection\n");
 
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
@@ -252,6 +254,7 @@ void* client_connection_handler(void* arg)
     size_t buf_len = sizeof(buf);
     int ret;
     string_t temp, name;
+    bool_t conn_req = FALSE;
 
     // chosen target information
     guid_t chosen_guid;
@@ -266,10 +269,10 @@ void* client_connection_handler(void* arg)
 
     // Welcome message
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
-    printf("Sending the Welcome message -- The client should see: %s\n", buf);
+    printf("DEBUG sending the Welcome message -- The client should see: %s\n", buf);
     ret = send(communication_socket, buf, strlen(buf), 0);
     check_send_error(ret, args, NULL);
-    printf("Welcome message sent on %d socket\n", communication_socket);
+    printf("DEBUG: Welcome message sent on %d socket\n", communication_socket);
 
     // set a 2 minutes timeout for the socket operations
     set_timeval(&tv, 120, 0);
@@ -284,10 +287,10 @@ void* client_connection_handler(void* arg)
     temp = serialize_guid(guid);
     snprintf(buf, buf_len, "1%s", temp);
     free(temp);
-    printf("Sending the generated guid %s\n", buf + 1);
+    printf("DEBUG: sending the generated guid %s\n", buf + 1);
     ret = send_to_client(communication_socket, buf);
     check_send_error(ret, args, NULL);
-    printf("Guid sent\n");
+    printf("DEBUG: guid sent\n");
 
     // sem_num = 0 --> operate on semaphore 0
     // sem_op = -1 --> decrement the semaphore value, wait if is 0
@@ -299,7 +302,7 @@ void* client_connection_handler(void* arg)
     SEM_RELEASE(sop, semid);
 
     // name is no longer useful, free it
-    free(name);
+    //free(name);
 
     while (TRUE)
     {
@@ -326,11 +329,16 @@ void* client_connection_handler(void* arg)
         check_recv_error(ret, args, &guid);
         if (ret == CONNECTION_REQUESTED)
         {
+            printf("DEBUG: ---\n");
             // get the partner's name and his socket
             SEM_LOCK(sop, semid);
             chosen_guid = get_partner(users_list, guid);
             chosen_socket = get_socket(users_list, chosen_guid);
+            char* ser_temp = serialize_guid(chosen_guid);
+            printf("DEBUG partner guid: %s\n", ser_temp);
+            printf("DEBUG my_socket %d partner socket: %d\n", communication_socket, chosen_socket);
             SEM_RELEASE(sop, semid);
+            conn_req = TRUE;
         }
 
         // if the message received is DISCONNECT the client will be disconnected from the server
@@ -345,31 +353,39 @@ void* client_connection_handler(void* arg)
         }
 
         // if ret != CONNECTION_REQUESTED the client has performed a choose
-        if (ret != CONNECTION_REQUESTED)
+        if (!conn_req)
         {
             // take the guid of the chosen client and his connection socket
             chosen_guid = deserialize_guid(buf);
+            SEM_LOCK(sop, semid);
             chosen_socket = get_socket(users_list, chosen_guid);
+            SEM_RELEASE(sop, semid);
+            char* ser_temp = serialize_guid(chosen_guid);
+            printf("DEBUG partner guid: %s\n", ser_temp);
+            printf("DEBUG my_socket %d partner socket: %d\n", communication_socket, chosen_socket);
         }
 
-        if (ret != CONNECTION_REQUESTED)
+        if (!conn_req)
         {
             // lock the binary semaphore
             SEM_LOCK(sop, semid);
-
+            printf("DEBUG check for the availability of the user\n");
             // check for the availability of the desired user
             if (get_available_flag(users_list, chosen_guid))
             {
                 // set the connection requested flag for the chosen client
                 set_connection_flag(users_list, chosen_guid, TRUE);
+                printf("DEBUG connection flag set\n");
 
                 // set the available flag for the two users to false
                 set_available_flag(users_list, guid, FALSE);
                 set_available_flag(users_list, chosen_guid, FALSE);
+                printf("DEBUG available flags set\n");
 
                 // set the partner for both users
                 set_partner(users_list, guid, chosen_guid);
                 set_partner(users_list, chosen_guid, guid);
+                printf("DEBUG partners set\n");
             }
             else
             {
@@ -386,11 +402,15 @@ void* client_connection_handler(void* arg)
 
         SEM_LOCK(sop, semid);
         temp = get_name(users_list, chosen_guid);
-        SEM_LOCK(sop, semid);
+        printf("DEBUG pick the partner's name: %s\n", temp);
+        SEM_RELEASE(sop, semid);
 
-        int ret_temp = send_to_client(communication_socket, temp);
+        snprintf(buf, buf_len, "1%s", temp);
+
+        int ret_temp = send_to_client(communication_socket, buf);
         check_send_error(ret_temp, args, &guid);
-        free(temp);
+        //free(temp);
+        printf("DEBUG name sent\nStarting a chat session..\n");
 
         // start the chat
         chat_handler(communication_socket, chosen_socket, semid);
@@ -408,7 +428,7 @@ int main()
     // server setup
     users_list = create_list();
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
-    ERROR_HELPER(socket_desc, "cannot open server socket");
+    ERROR_HELPER(socket_desc, "Cannot open server socket");
     server_intial_setup(socket_desc);
 
     /* ==== semaphore creation and initialization ==== */
@@ -443,7 +463,7 @@ int main()
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
 
-        printf("Connection accepted -- client socket is: %d\n", client_desc);
+        printf("DEBUG connection accepted -- client socket is: %d\n", client_desc);
 
         pthread_t thread;
 
