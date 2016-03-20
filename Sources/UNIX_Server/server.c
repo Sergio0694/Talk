@@ -243,7 +243,7 @@ void* client_connection_handler(void* arg)
 
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
-    int socketd = args->sock_desc;
+    int communication_socket = args->sock_desc;
     int semid = args->semid;
     struct sockaddr_in* client_addr = args->address;
 
@@ -267,13 +267,13 @@ void* client_connection_handler(void* arg)
     // Welcome message
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
     printf("Sending the Welcome message -- The client should see: %s\n", buf);
-    ret = send(socketd, buf, strlen(buf), 0);
+    ret = send(communication_socket, buf, strlen(buf), 0);
     check_send_error(ret, args, NULL);
-    printf("Welcome message sent on %d socket\n", socketd);
+    printf("Welcome message sent on %d socket\n", communication_socket);
 
     // set a 2 minutes timeout for the socket operations
     set_timeval(&tv, 120, 0);
-    ret = setsockopt(socketd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
+    ret = setsockopt(communication_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
     ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
 
     // save the name
@@ -285,7 +285,7 @@ void* client_connection_handler(void* arg)
     snprintf(buf, buf_len, "1%s", temp);
     free(temp);
     printf("Sending the generated guid %s\n", buf + 1);
-    ret = send_to_client(socketd, buf);
+    ret = send_to_client(communication_socket, buf);
     check_send_error(ret, args, NULL);
     printf("Guid sent\n");
 
@@ -294,7 +294,7 @@ void* client_connection_handler(void* arg)
     struct sembuf sop = { 0 };
     SEM_LOCK(sop, semid);
     // add the user to users_list
-    add(users_list, name, guid, socketd);
+    add(users_list, name, guid, communication_socket);
     // make the users_list available
     SEM_RELEASE(sop, semid);
 
@@ -316,13 +316,13 @@ void* client_connection_handler(void* arg)
         snprintf(buf, buf_len, "%s", temp);
         free(temp);
         printf("Sending the users list..\n");
-        ret = send_to_client(socketd, buf);
+        ret = send_to_client(communication_socket, buf);
         check_send_error(ret, args, &guid);
         printf("Users list sent\n");
 
         // wait for the client connection choice
-        ret = nonblocking_recv(socketd, buf, buf_len, guid);
-        //ret = recv_from_client(socketd, buf, buf_len);
+        ret = nonblocking_recv(communication_socket, buf, buf_len, guid);
+        //ret = recv_from_client(communication_socket, buf, buf_len);
         check_recv_error(ret, args, &guid);
         if (ret == CONNECTION_REQUESTED)
         {
@@ -388,12 +388,12 @@ void* client_connection_handler(void* arg)
         temp = get_name(users_list, chosen_guid);
         SEM_LOCK(sop, semid);
 
-        int ret_temp = send_to_client(socketd, temp);
+        int ret_temp = send_to_client(communication_socket, temp);
         check_send_error(ret_temp, args, &guid);
         free(temp);
 
         // start the chat
-        chat_handler(socketd, chosen_socket, semid);
+        chat_handler(communication_socket, chosen_socket, semid);
 
     } // end of while
 }
