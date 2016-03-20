@@ -7,9 +7,9 @@
 #ifndef CLIENT_LIST_H
 #define CLIENT_LIST_H
 
-#include "..\Shared\guid.h"
-#include "..\Shared\types.h"
-#include "..\Shared\string_helper.h"
+#include "..\..\Shared\guid.h"
+#include "..\..\Shared\types.h"
+#include "..\..\Shared\string_helper.h"
 
 // =================== Public types ====================
 typedef struct clientListBase* client_list_t;
@@ -25,6 +25,15 @@ typedef struct clientListBase* client_list_t;
 *    list ---> The source list
 *    index ---> The index of the target guid to retrieve */
 guid_t* try_get_guid(const client_list_t list, const int index);
+
+/* =====================================================================
+*  DestroyUserList
+*  =====================================================================
+*  Description:
+*    Deallocates a list and all its nodes
+*  Parameters:
+*    list ---> The target list to free */
+void destroy_user_list(client_list_t list);
 
 /* =====================================================================
 *  DeserializeClientList
@@ -44,6 +53,6 @@ client_list_t deserialize_client_list(const string_t buffer, const guid_t guid);
 *  Parameters:
 *    list ---> The list to print
 *    function ---> The callback function to invoke to print each item */
-void print_list(const client_list_t list, void(*function)(string_t));
+void print_list(const client_list_t list, void(*function)(int, string_t));
 
 #endif

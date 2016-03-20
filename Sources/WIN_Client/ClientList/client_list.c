@@ -74,6 +74,23 @@ guid_t* try_get_guid(const client_list_t list, const int index)
 	return NULL;
 }
 
+// Destroy
+void destroy_user_list(client_list_t list)
+{
+	// Skip if the list is already NULL
+	if (list == NULL) return;
+
+	// Deallocate the whole list
+	clientNodePointer pointer = list->head;
+	while (pointer != NULL)
+	{
+		clientNodePointer temp = pointer;
+		pointer = pointer->next;
+		free(temp);
+	}
+	free(list);
+}
+
 // Create
 client_list_t deserialize_client_list(const string_t buffer, const guid_t guid)
 {

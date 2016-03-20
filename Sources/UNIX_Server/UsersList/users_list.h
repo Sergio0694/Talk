@@ -143,6 +143,17 @@ guid_t get_partner(list_t list, guid_t guid);
 int get_socket(const list_t list, guid_t guid);
 
 /* =====================================================================
+*  GetName
+*  =====================================================================
+*  Description:
+*    Returns the name of the client with the given GUID.
+*    If the GUID isn't found, the function just returns NULL.
+*  Parameters:
+*    list ---> The input list
+*    guid ---> The GUID of the item to find */
+string_t get_name(const list_t list, guid_t guid);
+
+/* =====================================================================
 *  UsersListIterate
 *  =====================================================================
 *  Description:

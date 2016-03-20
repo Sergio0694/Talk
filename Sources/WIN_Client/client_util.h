@@ -16,7 +16,7 @@
 	{												\
 		if (test)									\
 		{											\
-			fprintf(stderr, "%s", message);			\
+			fprintf(stderr, "%s\n", message);			\
 			exit(EXIT_FAILURE);						\
 		}											\
 	} while (0)
