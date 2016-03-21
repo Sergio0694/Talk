@@ -22,7 +22,7 @@ guid_t client_guid;
 client_list_t client_users_list = NULL;
 HANDLE messageConsole = NULL;
 HANDLE consoleBuffer = NULL;
-SOCKET socketd = NULL;
+SOCKET socketd = INVALID_SOCKET;
 
 HANDLE prepare_chat_window()
 {
@@ -32,7 +32,7 @@ HANDLE prepare_chat_window()
 	PROCESS_INFORMATION p_info;
 	SecureZeroMemory((PVOID)&p_info, sizeof(p_info));
 	BOOL res = CreateProcess(
-		"C:\\Windows\\system32\\cmd.exe", /* Application name */
+		TEXT("C:\\WINDOWS\\System32\\cmd.exe"), /* Application name */
 		NULL, /* Command line */
 		NULL, /* Process attributes */
 		NULL, /* Thread attributes */
@@ -55,11 +55,15 @@ HANDLE get_console_screen_buffer_handle(HANDLE console_handle)
 		CONSOLE_TEXTMODE_BUFFER, /* Flags */
 		NULL /* Reserved */);
 	ERROR_HELPER(ret == INVALID_HANDLE_VALUE, "Error creating the console buffer");
+	/*BOOL res = SetConsoleActiveScreenBuffer(ret);
+	ERROR_HELPER(res == FALSE, "Error setting the buffer as active");*/
 	return ret;
 }
 
 void write_console_message(string_t message, HANDLE hConsole_buffer, int color)
 {
+	printf("%s\n", message);
+	return;
 	// Set the desied color for the message to display
 	SetConsoleTextAttribute(hConsole_buffer, color);
 
@@ -152,7 +156,7 @@ static void choose_name()
 
 	// Once the username has been chosen, save the client guid
 	client_guid = deserialize_guid(response + 1);
-	printf("Logged in, guid: %s", response + 1);
+	printf("Logged in, guid: %s\n", response + 1);
 }
 
 static void print_single_user(int index, string_t username)
@@ -202,12 +206,17 @@ guid_t* pick_target_user(string_t* username)
 {
 	printf("Pick a user to connect to: ");
 	bool_t done;
+
+	// Prepare the data for the WaitForMultipleObjectsEx call
+	HANDLE input_handles[2];
+	input_handles[0] = GetStdHandle(STD_INPUT_HANDLE);
+    input_handles[1] = WSACreateEvent();
+    WSAEventSelect(socketd, input_handles[1], FD_READ);
+
 	do
 	{
 		// Wait for both the socket and the stdin
-		HANDLE hstdin = GetStdHandle(STD_INPUT_HANDLE);
-		HANDLE sources[] = { hstdin, (HANDLE)socketd };
-		int ret = WaitForMultipleObjects(2, sources, FALSE, INFINITE);
+		int ret = WaitForMultipleObjectsEx(2, input_handles, FALSE, INFINITE, FALSE);
 		ERROR_HELPER(ret == WAIT_FAILED || ret == WAIT_TIMEOUT,
 			"Error in the WaitForMultipleObjects call");
 		int index = ret - WAIT_OBJECT_0;
@@ -215,6 +224,7 @@ guid_t* pick_target_user(string_t* username)
 		// Check if another user has started a chat session with this client
 		if (index == 1)
 		{
+			printf("DEBUG: data on socket - trying to read\n");
 			char buffer[BUFFER_LENGTH];
 			int read = recv_from_server(socketd, buffer, BUFFER_LENGTH);
 			*username = (char*)malloc(sizeof(char) * read);
@@ -250,8 +260,8 @@ void chat(string_t username)
 {
 	// Open the two console windows
 	printf("DEBUG opening new console ...\n");
-	messageConsole = prepare_chat_window();
-	consoleBuffer = get_console_screen_buffer_handle(messageConsole);
+	HANDLE consoleWindow = prepare_chat_window();
+	consoleBuffer = get_console_screen_buffer_handle(consoleWindow);
 	write_console_message(
 		"/* ========================\n*  CHAT WINDOW\n*  ====================== */\n\n",
 		consoleBuffer, DARK_GREEN);
@@ -311,7 +321,7 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
 	if (fdwCtrlType != CTRL_C_EVENT) return FALSE;
 
 	// Cleanup and close everything
-	if (socketd != NULL)
+	if (socketd != INVALID_SOCKET)
 	{
 		int ret = closesocket(socketd);
 		ERROR_HELPER(ret != 0, "Error while closing the socket");
@@ -377,6 +387,7 @@ int main()
 		{
 			send_target_guid(*target);
 			char buf[1024];
+			printf("DEBUG: target guid sent -- trying to read from socket\n");
 			recv_from_server(socketd, buf, 1);
 			char tmp[2] = { buf[0], '\0' };
 			int resultCode = atoi(tmp);

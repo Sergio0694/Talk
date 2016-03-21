@@ -29,7 +29,7 @@ void send_to_server(SOCKET socket, char* buf)
 		if (ret == -1 && WSAGetLastError() == WSAEINTR) continue;
 
 		// Check for errors
-		ERROR_HELPER(ret == -1, "Cannot send the message");
+		ERROR_HELPER(ret == SOCKET_ERROR, "Cannot send the message");
 
 		// Update the progress and continue
 		sent_bytes += ret;
@@ -48,10 +48,12 @@ int recv_from_server(SOCKET socket, char* buf, size_t buf_len)
 	{
 		int ret = recv(socket, buf + bytes_read, 1, 0);
 		ERROR_HELPER(ret == 0, "The server unexpectedly closed the connection");
-		ERROR_HELPER(ret == -1, "Cannot read from socket!");
+		if (ret == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK) continue;
+		if (ret == SOCKET_ERROR) fprintf(stderr, "%d: ", WSAGetLastError());
+		ERROR_HELPER(ret == SOCKET_ERROR, "Cannot read from socket!");
 		if (buf[bytes_read] == '\n') break;
-		if (bytes_read == buf_len) break;
 		bytes_read += ret;
+		if (bytes_read == buf_len) break;
 	}
 	buf[bytes_read] = STRING_TERMINATOR;
 	return bytes_read;

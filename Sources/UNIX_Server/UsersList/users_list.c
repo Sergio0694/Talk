@@ -136,7 +136,7 @@ bool_t remove_guid(list_t list, guid_t guid)
 	while (pointer != NULL)
 	{
 		// If the GUID matches, remove the item from the list
-		if (pointer->guid == guid)
+		if (guid_equals(pointer->guid, guid))
 		{
 			// Deallocate the content of the item
 			free(pointer->name);

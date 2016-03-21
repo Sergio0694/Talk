@@ -212,12 +212,14 @@ int chat_handler(int src, int dst, int semid)
         FD_ZERO(&readfdset);
         FD_SET(src, &readfdset);
 
+        printf("DEBUG select: Waiting for new messages bitches\n");
         // wait for messages from the source socket
         ret = select(1, &readfdset, NULL, NULL, &tv);
         if (ret == -1 && errno == EINTR) continue;
         if (ret == -1) return ret;
         if (ret == 0) return TIME_OUT_EXPIRED;
 
+        printf("Message received\n");
         SEM_LOCK(sop, semid);
 
         ret = recv_from_client(src, temp, buf_len);
@@ -308,10 +310,8 @@ void* client_connection_handler(void* arg)
     {
         // lock the binary semaphore
         SEM_LOCK(sop, semid);
-
         // serialize the users list
         temp = serialize_list(users_list);
-
         // make the users_list available
         SEM_RELEASE(sop, semid);
 
@@ -413,7 +413,15 @@ void* client_connection_handler(void* arg)
         printf("DEBUG name sent\nStarting a chat session..\n");
 
         // start the chat
-        chat_handler(communication_socket, chosen_socket, semid);
+        ret = chat_handler(communication_socket, chosen_socket, semid);
+        if (ret == TIME_OUT_EXPIRED)
+        {
+            fprintf(stderr, "Removing guid\n");
+            /*SEM_LOCK(sop, semid);
+            remove_guid(users_list, guid);
+            SEM_RELEASE(sop, semid);*/
+            close_and_cleanup(args, "Chat timeout expired");
+        }
 
     } // end of while
 }
