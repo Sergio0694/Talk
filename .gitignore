@@ -35,6 +35,11 @@
 # Operating System Files
 # =========================
 
+# Linux
+# =========================
+.directory
+.directory.lock
+
 # OSX
 # =========================
 

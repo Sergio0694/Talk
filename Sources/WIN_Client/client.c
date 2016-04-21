@@ -13,7 +13,7 @@
 #include "..\Shared\types.h"
 #include "client_graphics.h"
 
-#define SERVER_IP "192.168.1.103"
+#define SERVER_IP "192.168.56.101"
 #define PORT_NUMBER 25000
 #define BUFFER_LENGTH 1024
 //#define REFRESH -2
@@ -62,7 +62,7 @@ HANDLE get_console_screen_buffer_handle(HANDLE console_handle)
 
 void write_console_message(string_t message, HANDLE hConsole_buffer, int color)
 {
-	printf("%s\n", message);
+	printf("%s", message);
 	return;
 	// Set the desied color for the message to display
 	SetConsoleTextAttribute(hConsole_buffer, color);
@@ -207,7 +207,14 @@ guid_t* pick_target_user(string_t* username)
 	printf("Pick a user to connect to: ");
 	bool_t done;
 
-	// Prepare the data for the WaitForMultipleObjectsEx call
+	/*
+	HANDLE input_handle = GetStdHandle(STD_INPUT_HANDLE);
+    //WSAEventSelect(socketd, (WSAEVENT)input_handles[1], FD_READ);
+	struct timeval tv;
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;*/
+
+	// Prepare the data for the WaitForMultipleObjects call
 	HANDLE input_handles[2];
 	input_handles[0] = GetStdHandle(STD_INPUT_HANDLE);
     input_handles[1] = WSACreateEvent();
@@ -215,8 +222,32 @@ guid_t* pick_target_user(string_t* username)
 
 	do
 	{
+		/*bool_t index = FALSE;
+
+		while (TRUE)
+		{
+			fd_set set;
+			FD_ZERO(&set);
+			FD_SET(socketd, &set);
+
+			int ret = WaitForSingleObject(input_handle, 1000);
+			if (ret != WAIT_TIMEOUT)
+			{
+				index = TRUE;
+				ERROR_HELPER(ret == WAIT_FAILED, "WaitForSingleObject failed");
+				break;
+			}
+			ret = select(1, &set, NULL, NULL, &tv);
+			ERROR_HELPER(ret == SOCKET_ERROR, "Error on select call");
+			if (ret != 0)
+			{
+				index = FALSE;
+				break;
+			}
+		}*/
+
 		// Wait for both the socket and the stdin
-		int ret = WaitForMultipleObjectsEx(2, input_handles, FALSE, INFINITE, FALSE);
+		int ret = WaitForMultipleObjects(2, input_handles, FALSE, INFINITE);
 		ERROR_HELPER(ret == WAIT_FAILED || ret == WAIT_TIMEOUT,
 			"Error in the WaitForMultipleObjects call");
 		int index = ret - WAIT_OBJECT_0;
@@ -224,11 +255,14 @@ guid_t* pick_target_user(string_t* username)
 		// Check if another user has started a chat session with this client
 		if (index == 1)
 		{
+			// receive the username of the client who have chosen you
 			printf("DEBUG: data on socket - trying to read\n");
 			char buffer[BUFFER_LENGTH];
 			int read = recv_from_server(socketd, buffer, BUFFER_LENGTH);
 			*username = (char*)malloc(sizeof(char) * read);
+			printf("DEBUG: %s\n", *username);
 			strncpy(*username, buffer, read);
+			CloseHandle(input_handles[1]);
 			return NULL;
 		}
 		else if (index == 0)
@@ -244,7 +278,11 @@ guid_t* pick_target_user(string_t* username)
 			{
 				printf("The input index isn't valid\n");
 			}
-			else return guid;
+			else
+			{
+				CloseHandle(input_handles[1]);
+				return guid;
+			}
 		}
 	} while (!done);
 }
@@ -260,8 +298,8 @@ void chat(string_t username)
 {
 	// Open the two console windows
 	printf("DEBUG opening new console ...\n");
-	HANDLE consoleWindow = prepare_chat_window();
-	consoleBuffer = get_console_screen_buffer_handle(consoleWindow);
+	//HANDLE consoleWindow = prepare_chat_window();
+	//consoleBuffer = get_console_screen_buffer_handle(consoleWindow);
 	write_console_message(
 		"/* ========================\n*  CHAT WINDOW\n*  ====================== */\n\n",
 		consoleBuffer, DARK_GREEN);
@@ -269,8 +307,10 @@ void chat(string_t username)
 	while (TRUE)
 	{
 		// Wait for the stdin and the socket
-		HANDLE hstdin = GetStdHandle(STD_INPUT_HANDLE);
-		HANDLE sources[] = { hstdin, (HANDLE)socketd };
+		HANDLE sources[2];
+		sources[0] = GetStdHandle(STD_INPUT_HANDLE);
+	    sources[1] = WSACreateEvent();
+	    WSAEventSelect(socketd, sources[1], FD_READ);
 		int ret = WaitForMultipleObjects(2, sources, FALSE, INFINITE);
 		ERROR_HELPER(ret == WAIT_FAILED || ret == WAIT_TIMEOUT,
 			"Error in the WaitForMultipleObjects call");
@@ -394,10 +434,10 @@ int main()
 			if (resultCode == 1)
 			{
 				recv_from_server(socketd, buf, 1024);
-				chat(buf + 1);
+				chat(buf);
 			}
 			else continue;
 		}
-		else chat(username);
+		else chat(username + 1);
 	}
 }

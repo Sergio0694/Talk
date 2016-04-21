@@ -113,8 +113,8 @@ client_list_t deserialize_client_list(const string_t buffer, const guid_t guid)
 	bool_t tuple_found = FALSE;
 
 	// Current position in the input buffer and total buffer length
-	int index = 0, target = len + 1;
-	for (int i = 0; i < target; i++)
+	int index = 0, target = len + 1, i;
+	for (i = 0; i < target; i++)
 	{
 		// When the internal separator is reached, get the current name
 		if (buffer[i] == INTERNAL_SEPARATOR)

@@ -214,10 +214,10 @@ int chat_handler(int src, int dst, int semid)
 
         printf("DEBUG select: Waiting for new messages bitches\n");
         // wait for messages from the source socket
-        ret = select(1, &readfdset, NULL, NULL, &tv);
+        /*ret = select(1, &readfdset, NULL, NULL, &tv);
         if (ret == -1 && errno == EINTR) continue;
         if (ret == -1) return ret;
-        if (ret == 0) return TIME_OUT_EXPIRED;
+        if (ret == 0) return TIME_OUT_EXPIRED;*/
 
         printf("Message received\n");
         SEM_LOCK(sop, semid);
@@ -279,7 +279,7 @@ void* client_connection_handler(void* arg)
     // set a 2 minutes timeout for the socket operations
     set_timeval(&tv, 120, 0);
     ret = setsockopt(communication_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
-    ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option");
+    ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option"); // TODO: change this
 
     // save the name
     name_pickup(args, &name);
@@ -302,9 +302,6 @@ void* client_connection_handler(void* arg)
     add(users_list, name, guid, communication_socket);
     // make the users_list available
     SEM_RELEASE(sop, semid);
-
-    // name is no longer useful, free it
-    //free(name);
 
     while (TRUE)
     {
@@ -329,7 +326,7 @@ void* client_connection_handler(void* arg)
         check_recv_error(ret, args, &guid);
         if (ret == CONNECTION_REQUESTED)
         {
-            printf("DEBUG: ---\n");
+            printf("DEBUG: I'm the chosen\n");
             // get the partner's name and his socket
             SEM_LOCK(sop, semid);
             chosen_guid = get_partner(users_list, guid);
@@ -356,6 +353,7 @@ void* client_connection_handler(void* arg)
         if (!conn_req)
         {
             // take the guid of the chosen client and his connection socket
+            printf("DEBUG: I'm the one who choose\n");
             chosen_guid = deserialize_guid(buf);
             SEM_LOCK(sop, semid);
             chosen_socket = get_socket(users_list, chosen_guid);
@@ -392,6 +390,11 @@ void* client_connection_handler(void* arg)
                 // make the users_list available
                 SEM_RELEASE(sop, semid);
 
+                // send a 0 to inform that the chosen user is not available
+                buf[0] = '0';
+                ret = send(communication_socket, (void*)&buf[0], 1, 0);
+                check_send_error(ret, args, &guid);
+
                 // the chosen user is not available for chat, reserialize the users_list updated
                 continue;
             }
@@ -421,6 +424,14 @@ void* client_connection_handler(void* arg)
             remove_guid(users_list, guid);
             SEM_RELEASE(sop, semid);*/
             close_and_cleanup(args, "Chat timeout expired");
+        }
+        if (ret < 0)
+        {
+            fprintf(stderr, "Removing guid\n");
+            /*SEM_LOCK(sop, semid);
+            remove_guid(users_list, guid);
+            SEM_RELEASE(sop, semid);*/
+            close_and_cleanup(args, "Unexpected error occurs");
         }
 
     } // end of while
@@ -479,9 +490,9 @@ int main()
         conn_thread_args_t* args = (conn_thread_args_t*)malloc(sizeof(conn_thread_args_t));
         if (args == NULL)
         {
-			fprintf(stderr, "Malloc cannot allocate more space\n");
-			exit(EXIT_FAILURE);
-		}
+            fprintf(stderr, "Malloc cannot allocate more space\n");
+            exit(EXIT_FAILURE);
+        }
         args->sock_desc = client_desc;
         args->semid = semid;
         args->address = client_addr;
