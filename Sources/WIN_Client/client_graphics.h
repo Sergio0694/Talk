@@ -43,9 +43,9 @@
 *  =====================================================================
 *  Description:
 *    Changes the color in use when printing into the stdout buffer */
-/*void change_console_color(int color)
+void change_console_color(int color)
 {
 	SetConsoleTextAttribute(st, color);
-}*/
+}
 
 #endif

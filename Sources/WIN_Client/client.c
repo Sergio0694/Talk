@@ -11,12 +11,12 @@
 #include "..\Shared\guid.h"
 #include "..\Shared\string_helper.h"
 #include "..\Shared\types.h"
-#include "client_graphics.h"
 
 #define SERVER_IP "192.168.56.101"
+#define LOCAL_HOST "127.0.0.1"
 #define PORT_NUMBER 25000
+#define CHAT_WINDOW_PORT_NUMBER 25001
 #define BUFFER_LENGTH 1024
-//#define REFRESH -2
 
 guid_t client_guid;
 client_list_t client_users_list = NULL;
@@ -29,10 +29,11 @@ HANDLE prepare_chat_window()
 	STARTUPINFO startup_info;
 	SecureZeroMemory((PVOID)&startup_info, sizeof(startup_info));
 	startup_info.cb = sizeof(startup_info);
+	//startup_info.lpTitle = TEXT("Chat window");
 	PROCESS_INFORMATION p_info;
 	SecureZeroMemory((PVOID)&p_info, sizeof(p_info));
 	BOOL res = CreateProcess(
-		TEXT("C:\\WINDOWS\\System32\\cmd.exe"), /* Application name */
+		TEXT("..\\..\\Bin\\Client\\chat_window.exe"), /* Application name */
 		NULL, /* Command line */
 		NULL, /* Process attributes */
 		NULL, /* Thread attributes */
@@ -44,63 +45,6 @@ HANDLE prepare_chat_window()
 		(LPPROCESS_INFORMATION)&p_info);
 	ERROR_HELPER(!res, "Error creating the new console window");
 	return p_info.hProcess;
-}
-
-HANDLE get_console_screen_buffer_handle(HANDLE console_handle)
-{
-	HANDLE ret = CreateConsoleScreenBuffer(
-		GENERIC_WRITE, /* Desired access */
-		FILE_SHARE_WRITE, /*Share mode */
-		NULL, /* Security attributes */
-		CONSOLE_TEXTMODE_BUFFER, /* Flags */
-		NULL /* Reserved */);
-	ERROR_HELPER(ret == INVALID_HANDLE_VALUE, "Error creating the console buffer");
-	/*BOOL res = SetConsoleActiveScreenBuffer(ret);
-	ERROR_HELPER(res == FALSE, "Error setting the buffer as active");*/
-	return ret;
-}
-
-void write_console_message(string_t message, HANDLE hConsole_buffer, int color)
-{
-	printf("%s", message);
-	return;
-	// Set the desied color for the message to display
-	SetConsoleTextAttribute(hConsole_buffer, color);
-
-	// Try to write the message to the target console buffer
-	int len = strlen(message);
-	DWORD written = 0;
-	BOOL res = WriteConsole(
-		hConsole_buffer, /* Console buffer handle */
-		(void*)message, /* Message buffer */
-		len, /* Number of characters to write */
-		(LPDWORD)&written, /* Number of written characters */
-		NULL /* Reserved */);
-
-	// Check for errors
-	ERROR_HELPER(res == 0, "Error writing into the target console buffer");
-	ERROR_HELPER(written != len, "The message wasn't written completely");
-}
-
-void write_message_console_title(HANDLE console_buffer)
-{
-
-}
-
-// Initializes the WINSOCKET API
-static void initialize_socket_API()
-{
-	// Make the API call
-	WSADATA data = { 0 };
-	int startup_ret = WSAStartup(MAKEWORD(2, 2), (LPWSADATA)&data);
-
-	// Everything went fine, just return
-	if (startup_ret == 0) return;
-
-	// Display an error message and exit the process
-	ERROR_HELPER(startup_ret == WSAVERNOTSUPPORTED,
-		"The 2.2 SOCKET APIs are not supported on your system");
-	ERROR_HELPER(startup_ret != 0, "There was an error during the SOCKET API initialization");
 }
 
 // Creates a socket
@@ -143,9 +87,9 @@ static void choose_name()
 
 		printf("Name chosen %s\nTrying to send it to the server\n", buffer);
 		// Sends the name to the server and waits for a response
-		send_to_server(socketd, buffer);
+		send_to_socket(socketd, buffer);
 		printf("Sent succesfully\nWaiting for a server response\n");
-		int ret = recv_from_server(socketd, response, BUFFER_LENGTH);
+		int ret = recv_from_socket(socketd, response, BUFFER_LENGTH);
 		char tmp[2] = { response[0], '\0' };
 		int result = atoi(tmp);
 
@@ -175,7 +119,7 @@ static void load_users_list()
 {
 	char buffer[BUFFER_LENGTH];
 	printf("Waiting for the users list\n");
-	recv_from_server(socketd, buffer, BUFFER_LENGTH);
+	recv_from_socket(socketd, buffer, BUFFER_LENGTH);
 	printf("List received\n");
 	printf("DEBUG: %s\n", buffer);
 	client_users_list = deserialize_client_list(buffer, client_guid);
@@ -258,7 +202,7 @@ guid_t* pick_target_user(string_t* username)
 			// receive the username of the client who have chosen you
 			printf("DEBUG: data on socket - trying to read\n");
 			char buffer[BUFFER_LENGTH];
-			int read = recv_from_server(socketd, buffer, BUFFER_LENGTH);
+			int read = recv_from_socket(socketd, buffer, BUFFER_LENGTH);
 			*username = (char*)malloc(sizeof(char) * read);
 			printf("DEBUG: %s\n", *username);
 			strncpy(*username, buffer, read);
@@ -291,18 +235,37 @@ void send_target_guid(const guid_t guid)
 {
 	string_t serialized = serialize_guid(guid);
 	serialized = strcat(serialized, "\n");
-	send_to_server(socketd, serialized);
+	send_to_socket(socketd, serialized);
 }
 
 void chat(string_t username)
 {
-	// Open the two console windows
+	// Open the console window
 	printf("DEBUG opening new console ...\n");
-	//HANDLE consoleWindow = prepare_chat_window();
-	//consoleBuffer = get_console_screen_buffer_handle(consoleWindow);
-	write_console_message(
-		"/* ========================\n*  CHAT WINDOW\n*  ====================== */\n\n",
-		consoleBuffer, DARK_GREEN);
+	HANDLE consoleWindow = prepare_chat_window();
+
+	// Try to create the socket
+	SOCKET client_socket = socket(AF_INET, SOCK_STREAM, 0);
+	ERROR_HELPER(socketd == INVALID_SOCKET, "There was an error while creating the socket");
+
+	// Create the address struct and set the default values
+	struct sockaddr_in server_addr = { 0 };
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(CHAT_WINDOW_PORT_NUMBER);
+
+	// Get the IP address in network byte order
+	u_long inner_addr = inet_addr(LOCAL_HOST);
+	server_addr.sin_addr.s_addr = inner_addr;
+
+	// Try to connect
+	int ret;
+	while (TRUE)
+	{
+		ret = connect(client_socket, (struct sockaddr*)&server_addr, sizeof(struct sockarr_in));
+		if (ret == INVALID_SOCKET && WSAGetLastError() == WSAEHOSTUNREACH) continue;
+		ERROR_HELPER(ret == INVALID_SOCKET, "Error in the connect function");
+		break;
+	}
 
 	while (TRUE)
 	{
@@ -321,20 +284,17 @@ void chat(string_t username)
 		{
 			// Receive the message from the server
 			char buffer[BUFFER_LENGTH];
-			int read = recv_from_server(socketd, buffer, BUFFER_LENGTH);
+			int read = recv_from_socket(socketd, buffer, BUFFER_LENGTH);
 
 			// Calculate the username to display
 			char tmp[2] = { buffer[0], '\0' };
 			int userIndex = atoi(tmp);
 
 			// Display the message in the target console
-			write_console_message("[", consoleBuffer, DARK_TEXT);
-			string_t displayedName = userIndex == 0 ? "Me" : username;
-			write_console_message(displayedName, consoleBuffer, RED_TEXT);
-			write_console_message("] ", consoleBuffer, DARK_TEXT);
-			write_console_message(buffer + 1, consoleBuffer, WHITE_TEXT);
-			write_console_message("\n", consoleBuffer, WHITE_TEXT);
-
+			char* message[BUFFER_LENGTH];
+			char* temp_name = userIndex == 0 ? "Me" : username;
+			snprintf(message, BUFFER_LENGTH, "[%s]%s", temp_name, buffer);
+			send_to_socket(client_socket, message);
 		}
 		else if (index == 0)
 		{
@@ -342,15 +302,12 @@ void chat(string_t username)
 			char message[BUFFER_LENGTH];
 			char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
 			if (gets_ret == NULL) continue;
-			send_to_server(socketd, message);
+			send_to_socket(socketd, message);
 		}
 	}
 
 	// Close the message console
-	BOOL close_res = CloseHandle(consoleBuffer);
-	ERROR_HELPER(!close_res, "Error closing the console buffer");
-	close_res = CloseHandle(messageConsole);
-	ERROR_HELPER(!close_res, "Error closing the chat console");
+	// TODO...
 }
 
 BOOL CtrlHandler(DWORD fdwCtrlType)
@@ -428,12 +385,12 @@ int main()
 			send_target_guid(*target);
 			char buf[1024];
 			printf("DEBUG: target guid sent -- trying to read from socket\n");
-			recv_from_server(socketd, buf, 1);
+			recv_from_socket(socketd, buf, 1);
 			char tmp[2] = { buf[0], '\0' };
 			int resultCode = atoi(tmp);
 			if (resultCode == 1)
 			{
-				recv_from_server(socketd, buf, 1024);
+				recv_from_socket(socketd, buf, 1024);
 				chat(buf);
 			}
 			else continue;

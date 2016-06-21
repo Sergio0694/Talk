@@ -24,17 +24,17 @@
 // ==================== Functions ======================
 
 /* =====================================================================
-*  SendToServer
+*  SendToSocket
 *  =====================================================================
 *  Description:
 *    Sends a message buffers to a given socket
 *  Parameters:
 *    socket ---> The socket with an open connection to the server
 *    buf ---> The buffer that contains the message to send */
-void send_to_server(SOCKET socket, char* buf);
+void send_to_socket(SOCKET socket, char* buf);
 
 /* =====================================================================
-*  ReceiveFromServer
+*  ReceiveFromSocket
 *  =====================================================================
 *  Description:
 *    Receives a message from a socket
@@ -42,6 +42,13 @@ void send_to_server(SOCKET socket, char* buf);
 *    socket ---> The socket with an open connection to the server
 *	 buf ---> The buffer to use to store the received message
 *    buf_len ---> The size of the target buffer */
-int recv_from_server(SOCKET socket, char* buf, size_t buf_len);
+int recv_from_socket(SOCKET socket, char* buf, size_t buf_len);
+
+/* =====================================================================
+*  InitializeSocketAPI
+*  =====================================================================
+*  Description:
+*    Initializes the WINAPI for the sockets */
+void initialize_socket_API();
 
 #endif
