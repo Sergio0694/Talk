@@ -44,13 +44,13 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
         // a complete message from client finish with a \n
         if (buf[bytes_read] == '\n') break;
 
+        bytes_read += ret;
         // if there is no \n the message is truncated when is length is buf_len
         if (bytes_read == buf_len) break;
-        bytes_read += ret;
     }
 
     // substitute the \n with the string terminator
-    buf[bytes_read++] = STRING_TERMINATOR;
+    buf[bytes_read] = STRING_TERMINATOR;
     printf("\nMessage received: %s\n", buf);
     return bytes_read;
 }
