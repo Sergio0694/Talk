@@ -5,6 +5,7 @@
 #include <Ws2tcpip.h> /* InetPton() */
 #include <string.h>   /* strncpy() */
 #include <ctype.h>    /* isdigit() */
+#include <time.h>
 
 #include "client_util.h"
 #include "ClientList\client_list.h"
@@ -16,6 +17,7 @@
 #define LOCAL_HOST "127.0.0.1"
 #define PORT_NUMBER 25000
 #define CHAT_WINDOW_PORT_NUMBER 25001
+#define RANDOM_PORT_RANGE 20000
 #define BUFFER_LENGTH 1024
 
 guid_t client_guid;
@@ -23,18 +25,25 @@ client_list_t client_users_list = NULL;
 HANDLE messageConsole = NULL;
 HANDLE consoleBuffer = NULL;
 SOCKET socketd = INVALID_SOCKET;
+int chat_window_port;
 
 HANDLE prepare_chat_window()
 {
 	STARTUPINFO startup_info;
 	SecureZeroMemory((PVOID)&startup_info, sizeof(startup_info));
 	startup_info.cb = sizeof(startup_info);
-	//startup_info.lpTitle = TEXT("Chat window");
+	startup_info.lpTitle = TEXT("Chat Window");
 	PROCESS_INFORMATION p_info;
 	SecureZeroMemory((PVOID)&p_info, sizeof(p_info));
+
+	char cmd_args[32];
+	srand((unsigned)time(NULL));
+	chat_window_port = rand() % RANDOM_PORT_RANGE + CHAT_WINDOW_PORT_NUMBER;
+	snprintf(cmd_args, 32, "%d", chat_window_port);
+
 	BOOL res = CreateProcess(
 		TEXT("..\\..\\Bin\\Client\\chat_window.exe"), /* Application name */
-		NULL, /* Command line */
+		cmd_args, /* Command line */
 		NULL, /* Process attributes */
 		NULL, /* Thread attributes */
 		FALSE, /* Inherit handles */
@@ -251,7 +260,7 @@ void chat(string_t username)
 	// Create the address struct and set the default values
 	struct sockaddr_in server_addr = { 0 };
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(CHAT_WINDOW_PORT_NUMBER);
+	server_addr.sin_port = htons(chat_window_port);
 
 	// Get the IP address in network byte order
 	u_long inner_addr = inet_addr(LOCAL_HOST);
@@ -261,7 +270,7 @@ void chat(string_t username)
 	int ret;
 	while (TRUE)
 	{
-		ret = connect(client_socket, (struct sockaddr*)&server_addr, sizeof(struct sockarr_in));
+		ret = connect(client_socket, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_in));
 		if (ret == INVALID_SOCKET && WSAGetLastError() == WSAEHOSTUNREACH) continue;
 		ERROR_HELPER(ret == INVALID_SOCKET, "Error in the connect function");
 		break;
@@ -291,7 +300,7 @@ void chat(string_t username)
 			int userIndex = atoi(tmp);
 
 			// Display the message in the target console
-			char* message[BUFFER_LENGTH];
+			char message[BUFFER_LENGTH];
 			char* temp_name = userIndex == 0 ? "Me" : username;
 			snprintf(message, BUFFER_LENGTH, "[%s]%s", temp_name, buffer);
 			send_to_socket(client_socket, message);

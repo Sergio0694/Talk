@@ -71,7 +71,7 @@ void server_intial_setup(int socket_desc)
     int ret;
 
     // some fields are required to be filled with 0
-    struct sockaddr_in server_addr = {0};
+    struct sockaddr_in server_addr = { 0 };
 
     int sockaddr_len = sizeof(struct sockaddr_in);
 
