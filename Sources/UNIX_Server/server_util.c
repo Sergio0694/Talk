@@ -11,8 +11,8 @@
 // Send a message to the client
 int send_to_client(int socket, char* buf)
 {
-    int sent_bytes = 0, ret;
-    size_t msg_len = strlen(buf);
+    int ret;
+    size_t sent_bytes = 0, msg_len = strlen(buf);
 
     buf[msg_len++] = '\n';
 
@@ -31,7 +31,7 @@ int send_to_client(int socket, char* buf)
 int recv_from_client(int socket, char* buf, size_t buf_len)
 {
     int ret;
-    int bytes_read = 0;
+    size_t bytes_read = 0;
 
     // messages longer than buf_len will be truncated
     while (bytes_read <= buf_len)
@@ -57,7 +57,7 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
 
 bool_t name_validation(char* name, size_t len)
 {
-    int i;
+    unsigned i;
     for (i = 0; i < len; i++)
     {
         if (name[i] == EXTERNAL_SEPARATOR ||

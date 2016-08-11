@@ -11,13 +11,13 @@
 // Fills the console with blank spaces to clear its content
 /*void clear_screen()
 {
-	DWORD n, size;
-	COORD coord = { 0, 0 };
-	size = csbiInfo.dwSize.X * csbiInfo.dwSize.Y;
-	FillConsoleOutputCharacter(st, TEXT(' '), size, coord, &n);
-	GetConsoleScreenBufferInfo(st, &csbiInfo);
-	FillConsoleOutputAttribute(st, csbiInfo.wAttributes, size, coord, &n);
-	SetConsoleCursorPosition(st, coord);
+    DWORD n, size;
+    COORD coord = { 0, 0 };
+    size = csbiInfo.dwSize.X * csbiInfo.dwSize.Y;
+    FillConsoleOutputCharacter(st, TEXT(' '), size, coord, &n);
+    GetConsoleScreenBufferInfo(st, &csbiInfo);
+    FillConsoleOutputAttribute(st, csbiInfo.wAttributes, size, coord, &n);
+    SetConsoleCursorPosition(st, coord);
 }*/
 
 // ---------------------------------------------------------------------
@@ -26,6 +26,6 @@
 // Sets a new color combination for each character foreground/background
 void change_console_color(int color)
 {
-	HANDLE st = GetStdHandle(STD_OUTPUT_HANDLE);
-	SetConsoleTextAttribute(st, color | color);
+    HANDLE st = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(st, color | color);
 }
