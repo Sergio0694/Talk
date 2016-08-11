@@ -7,6 +7,7 @@
 #ifndef SERVER_UTIL_H
 #define SERVER_UTIL_H
 
+#include <unistd.h> /* size_t */
 #include "../Shared/types.h"
 
 // ==================== Generic macros ======================

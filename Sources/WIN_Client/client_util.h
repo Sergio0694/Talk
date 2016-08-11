@@ -8,18 +8,19 @@
 #define CLIENT_UTIL_H
 
 #include <stdio.h>
+#include <winsock2.h>
 
 // ==================== Generic macros ======================
 
-#define ERROR_HELPER(test, message)					\
-	do												\
-	{												\
-		if (test)									\
-		{											\
-			fprintf(stderr, "%s\n", message);			\
-			exit(EXIT_FAILURE);						\
-		}											\
-	} while (0)
+#define ERROR_HELPER(test, message)                   \
+    do                                                \
+    {                                                 \
+        if (test)                                     \
+        {                                             \
+            fprintf(stderr, "%s\n", message);         \
+            exit(EXIT_FAILURE);                       \
+        }                                             \
+    } while (0)
 
 // ==================== Functions ======================
 
@@ -40,7 +41,7 @@ void send_to_socket(SOCKET socket, char* buf);
 *    Receives a message from a socket
 *  Parameters:
 *    socket ---> The socket with an open connection to the server
-*	 buf ---> The buffer to use to store the received message
+*     buf ---> The buffer to use to store the received message
 *    buf_len ---> The size of the target buffer */
 int recv_from_socket(SOCKET socket, char* buf, size_t buf_len);
 
