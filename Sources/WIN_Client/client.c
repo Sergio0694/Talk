@@ -37,6 +37,32 @@ SOCKET socketd = INVALID_SOCKET;
 int chat_window_port;
 /* ========================= */
 
+/*
+// Thread function to handle the pressing of the return key
+DWORD return_handler(LPVOID params)
+{
+    int ret;
+
+    thread_params_t* args = (thread_params_t*)params;
+    HANDLE stdin_handle = args->stdin_handle;
+    HANDLE event = args->event_handle;
+
+    while (TRUE)
+    {
+        ret = WaitForSingleObject(stdin_handle, INFINITE);
+        ERROR_HELPER(ret == WAIT_FAILED, "Error in WaitForSingleObject");
+        if (GetAsyncKeyState(VK_RETURN))
+        {
+            printf("DEBUG \\n key pressed - signaling ... \n");
+            ret = SetEvent(event);
+            ERROR_HELPER(ret == 0, "Error while signaling the event");
+            ret = ResetEvent(event);
+            ERROR_HELPER(ret == 0, "Error while resetting the event");
+        }
+    }
+}
+*/
+
 HANDLE prepare_chat_window()
 {
     STARTUPINFO startup_info;
@@ -144,27 +170,6 @@ static void load_users_list()
 
     // Print the users list
     print_list(client_users_list, print_single_user);
-}
-
-int read_integer()
-{
-    char buf[10];
-    const int maxIntCharLen = 10;
-    char* res = fgets(buf, maxIntCharLen, stdin);
-    ERROR_HELPER(res == NULL, "Error reading from the input buffer");
-    if (strncmp(buf, "R", 1) == 0)
-    {
-        printf("DEBUG refresh requested\n");
-        return REFRESH;
-    }
-    int i = 0;
-    while (buf[i] != '\n')
-    {
-        if (!isdigit((int)buf[i++])) return -1;
-    }
-    int number = atoi(buf);
-    printf("%d\n", number);
-    return number >= 0 ? number : -1;
 }
 
 // First picker function that checks for a request by another user
@@ -307,7 +312,6 @@ guid_t* pick_target_user(string_t* username)
         0,          // Default creation flags
         NULL); // Ignore the thread identifier
     ERROR_HELPER(picker_threads[0] == NULL, "Error creating the first picker thread");
-
     picker_threads[1] = CreateThread(
         NULL,       // Default security attributes
         0,          // Default stack size
@@ -323,7 +327,6 @@ guid_t* pick_target_user(string_t* username)
 
     // Get the return value
     guid_t* return_value = arg.output_guid;
-    printf("DEBUG the return value is NULL? %d\n", return_value == NULL);
 
     // Cleanup
     ERROR_HELPER(!(TerminateThread(picker_threads[0], TRUE)
@@ -345,6 +348,11 @@ void send_target_guid(const guid_t guid)
 
 void chat(string_t username)
 {
+    printf("Press enter to open a chat console\n");
+    char buf[2];
+    char* enter = fgets(buf, 1, stdin);
+    ERROR_HELPER(enter == NULL, "Error in fgets");
+
     // Open the console window
     printf("DEBUG opening new console ...\n");
     consoleWindow = prepare_chat_window();
@@ -419,10 +427,10 @@ void chat(string_t username)
             if (gets_ret == NULL) continue;
             send_to_socket(socketd, message);
 
-            // Send the message to the chat window CHANGED: Seems to double the message displayed
-            /*char chat_window_message[BUFFER_LENGTH];
+            // Send the message to the chat window
+            char chat_window_message[BUFFER_LENGTH];
             snprintf(chat_window_message, BUFFER_LENGTH, "0[Me]%s", message);
-            send_to_socket(chat_window_socket, chat_window_message);*/
+            send_to_socket(chat_window_socket, chat_window_message);
         }
     }
 
@@ -452,6 +460,20 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
         close_res = CloseHandle(consoleWindow);
         ERROR_HELPER(!close_res, "Error closing the chat window");
     }
+
+    /*
+    // Close the thread, if necessary
+    if (return_thread != NULL)
+    {
+        close_res = CloseHandle(return_thread);
+        ERROR_HELPER(!close_res, "Error closing the return thread");
+    }
+    if (event_handle != NULL)
+    {
+        close_res = CloseHandle(event_handle);
+        ERROR_HELPER(!close_res, "Error closing the event handle");
+    }
+    */
 
     // Confirm and return the result
     printf("SHUT DOWN completed\n");
