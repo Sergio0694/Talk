@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <string.h>     /* strerror() and strlen() */
+#include <unistd.h>     /* close() */
 #include <pthread.h>
 #include <signal.h>
 #include <arpa/inet.h>  /* htons(), ntohs() and inet_ntop() */
@@ -17,6 +18,9 @@
 #include "sem_util.h"
 #include "server_util.h"
 #include "server.h"
+
+#define REFRESH_MESSAGE "R"
+#define DISCONNECT_MESSAGE "DISCONNECT"
 
 /* ===== GLOBAL VARIABLES ===== */
 typedef struct thread_args_s
@@ -42,6 +46,7 @@ union semun
 
 /* ===== PRIVATE FUNCTIONS ===== */
 
+// Close everything before exiting the thread function
 static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 {
     int socketd = args->sock_desc;
@@ -159,16 +164,13 @@ static void name_pickup(conn_thread_args_t* args, char** name)
 int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
 {
     int ret;
-    int bytes_read = 0;
-
-    //getc(stdin); // test
+    size_t bytes_read = 0;
     while (bytes_read <= buf_len)
     {
         ret = recv(socket, buf + bytes_read, 1, MSG_DONTWAIT);
-        //getc(stdin);
         if (ret == -1 && errno == EAGAIN)
         {
-            // continously che for connection request by other client
+            // continously check for connection request by other client
             if (get_connection_requested_flag(users_list, guid)) return CONNECTION_REQUESTED;
             continue;
         }
@@ -178,19 +180,19 @@ int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
         if (ret < 0) return UNEXPECTED_ERROR;
         printf("%c", buf[bytes_read]);
         if (buf[bytes_read] == '\n') break;
-        //printf("BBBBBB\n" );
+
         // if there is no \n the message is truncated when is length is buf_len
         if (bytes_read == buf_len) break;
         bytes_read += ret;
     }
-    //printf("CCCCCC\n" );
     buf[bytes_read++] = STRING_TERMINATOR;
-    //printf("\nDDDDDDD\n" );
     return bytes_read;
 }
 
 /* ============================= */
 
+// Function executed by both the chooser and the chosen clients, src and dst represent the sockets
+// by which the server receive and send the chat message from the two clients
 int chat_handler(int src, int dst, int semid)
 {
     // aux variables
@@ -207,6 +209,7 @@ int chat_handler(int src, int dst, int semid)
 
     while (TRUE)
     {
+        /*
         // create the set for the select call
         fd_set readfdset;
         FD_ZERO(&readfdset);
@@ -214,13 +217,13 @@ int chat_handler(int src, int dst, int semid)
 
         printf("DEBUG select: Waiting for new messages bitches\n");
         // wait for messages from the source socket
-        /*ret = select(1, &readfdset, NULL, NULL, &tv);
+        ret = select(1, &readfdset, NULL, NULL, &tv);
         if (ret == -1 && errno == EINTR) continue;
         if (ret == -1) return ret;
-        if (ret == 0) return TIME_OUT_EXPIRED;*/
+        if (ret == 0) return TIME_OUT_EXPIRED;
 
         printf("Message received\n");
-        SEM_LOCK(sop, semid);
+        SEM_LOCK(sop, semid);*/
 
         ret = recv_from_client(src, temp, buf_len);
         if (ret < 0) return ret;
@@ -236,15 +239,14 @@ int chat_handler(int src, int dst, int semid)
         ret = send_to_client(dst, buf);
         if (ret < 0) return ret;
 
-        SEM_RELEASE(sop, semid);
+        //SEM_RELEASE(sop, semid);
     }
     return 0;
 }
 
+// Function to handle the connection of the clients to the server
 void* client_connection_handler(void* arg)
 {
-    printf("DEBUG handling connection\n");
-
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int communication_socket = args->sock_desc;
@@ -279,7 +281,8 @@ void* client_connection_handler(void* arg)
     // set a 2 minutes timeout for the socket operations
     set_timeval(&tv, 120, 0);
     ret = setsockopt(communication_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
-    ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option"); // TODO: change this
+    //ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option"); // TODO: change this
+    if (ret < 0) close_and_cleanup(args, "Cannot set SO_RCVTIMEO option"); // CHANGED: to check
 
     // save the name
     name_pickup(args, &name);
@@ -305,11 +308,9 @@ void* client_connection_handler(void* arg)
 
     while (TRUE)
     {
-        // lock the binary semaphore
+        // serialize the users list, atomic operation
         SEM_LOCK(sop, semid);
-        // serialize the users list
         temp = serialize_list(users_list);
-        // make the users_list available
         SEM_RELEASE(sop, semid);
 
         // send the serialized users list to the client
@@ -322,8 +323,9 @@ void* client_connection_handler(void* arg)
 
         // wait for the client connection choice
         ret = nonblocking_recv(communication_socket, buf, buf_len, guid);
-        //ret = recv_from_client(communication_socket, buf, buf_len);
         check_recv_error(ret, args, &guid);
+
+        // if ret == CONNECTION_REQUESTED you're choose from another client
         if (ret == CONNECTION_REQUESTED)
         {
             printf("DEBUG: I'm the chosen\n");
@@ -338,8 +340,14 @@ void* client_connection_handler(void* arg)
             conn_req = TRUE;
         }
 
+        if (strncmp(buf, REFRESH_MESSAGE, strlen(REFRESH_MESSAGE)) == 0)
+        {
+            printf("DEBUG received a refresh request\nDEBUG sending the refreshed list\n");
+            continue;
+        }
+
         // if the message received is DISCONNECT the client will be disconnected from the server
-        if (strcmp(buf, "DISCONNECT") == 0)
+        if (strncmp(buf, DISCONNECT_MESSAGE, strlen(DISCONNECT_MESSAGE)) == 0)
         {
             // remove the client from the users list
             SEM_LOCK(sop, semid);
@@ -349,7 +357,7 @@ void* client_connection_handler(void* arg)
             close_and_cleanup(args, "The client want to be disconnected");
         }
 
-        // if ret != CONNECTION_REQUESTED the client has performed a choose
+        // if !conn_req the client has performed a choose
         if (!conn_req)
         {
             // take the guid of the chosen client and his connection socket
@@ -358,8 +366,8 @@ void* client_connection_handler(void* arg)
             SEM_LOCK(sop, semid);
             chosen_socket = get_socket(users_list, chosen_guid);
             SEM_RELEASE(sop, semid);
-            char* ser_temp = serialize_guid(chosen_guid);
-            printf("DEBUG partner guid: %s\n", ser_temp);
+            // DEBUG? char* ser_temp = serialize_guid(chosen_guid);
+            printf("DEBUG partner guid: %s\n", buf);
             printf("DEBUG my_socket %d partner socket: %d\n", communication_socket, chosen_socket);
         }
 
