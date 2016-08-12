@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <winsock2.h>
 #include <Windows.h>
 #include <Winbase.h>
@@ -115,11 +116,9 @@ static void choose_name()
         send_to_socket(socketd, buffer);
         printf("Sent succesfully\nWaiting for a server response\n");
         recv_from_socket(socketd, response, BUFFER_LENGTH);
-        char tmp[2] = { response[0], '\0' };
-        int result = atoi(tmp);
 
         // Check the result
-        if (result == 1) break;
+        if (response[0] == '1') break;
         printf("%s\n", response + 1);
     }
 
@@ -165,6 +164,7 @@ DWORD WINAPI picker_handler_in(LPVOID arg)
     // Receive the username of the client who picked you
     printf("DEBUG: data on socket - trying to read\n");
     char buffer[BUFFER_LENGTH];
+    SecureZeroMemory(buffer, BUFFER_LENGTH);
     int read = recv_from_socket(socketd, buffer, BUFFER_LENGTH);
 
     // Save the return value
@@ -201,6 +201,7 @@ DWORD WINAPI picker_handler_out(LPVOID arg)
     {
         // Read an integer from stdin require conversion, inline required by TerminateThread
         char buf[10];
+        SecureZeroMemory(buf, 10);
         const int maxIntCharLen = 10;
         char* res = fgets(buf, maxIntCharLen, stdin);
         ERROR_HELPER(res == NULL, "Error reading from the input buffer");
@@ -342,18 +343,16 @@ DWORD WINAPI chat_handler_in(LPVOID arg)
     {
         // Receive the message from the server
         char buffer[BUFFER_LENGTH];
+        SecureZeroMemory(buffer, BUFFER_LENGTH);
         recv_from_socket(socketd, buffer, BUFFER_LENGTH);
-
-        // Calculate the username to display
-        char tmp[2] = { buffer[0], '\0' };
-        int userIndex = atoi(tmp);
 
         // Display the message in the target console
         char message[BUFFER_LENGTH];
-        char* temp_name = userIndex == 0 ? "Me" : username;
-        snprintf(message, BUFFER_LENGTH, "%d[%s]%s", userIndex, temp_name, buffer + 1);
-        printf("DEBUG message to send to chat window %s -- userIndex %d\n",
-                message, userIndex);
+        SecureZeroMemory(message, BUFFER_LENGTH);
+        char* temp_name = buffer[0] == '0' ? "Me" : username;
+        snprintf(message, BUFFER_LENGTH, "%c[%s]%s", buffer[0], temp_name, buffer + 1);
+        printf("DEBUG message to send to chat window %s -- userIndex %c\n",
+                message, buffer[0]);
 
         // Lock and send the message to the console
         DWORD ret = WaitForSingleObject(chat_window_semaphore, INFINITE);
@@ -381,12 +380,14 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
     {
         // Send the new message if necessary
         char message[BUFFER_LENGTH];
+        SecureZeroMemory(message, BUFFER_LENGTH);
         char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
         if (gets_ret == NULL) continue;
         send_to_socket(socketd, message);
 
-        // Send the message to the chat window
+        // Prepare the message for the console window
         char chat_window_message[BUFFER_LENGTH];
+        SecureZeroMemory(chat_window_message, BUFFER_LENGTH);
         snprintf(chat_window_message, BUFFER_LENGTH, "0[Me]%s", message);
 
         // Lock and send the message to the console
@@ -506,7 +507,6 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
     // Confirm and return the result
     printf("SHUT DOWN completed\n");
     exit(EXIT_SUCCESS);
-    //return TRUE;
 }
 
 int main()
@@ -551,9 +551,7 @@ int main()
             char buf[1024];
             printf("DEBUG: target guid sent -- trying to read from socket\n");
             recv_from_socket(socketd, buf, 1);
-            char tmp[2] = { buf[0], '\0' };
-            int resultCode = atoi(tmp);
-            if (resultCode == 1)
+            if (buf[0] == '1')
             {
                 recv_from_socket(socketd, buf, 1024);
                 chat(buf);

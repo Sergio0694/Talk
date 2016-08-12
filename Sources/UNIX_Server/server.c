@@ -203,28 +203,8 @@ int chat_handler(int src, int dst, int semid)
     struct timeval tv;
     set_timeval(&tv, 120, 0);
 
-    // sync stuff for the chat will be handled by semaphore two
-    struct sembuf sop = { 0 };
-    sop.sem_num = 1;
-
     while (TRUE)
     {
-        /*
-        // create the set for the select call
-        fd_set readfdset;
-        FD_ZERO(&readfdset);
-        FD_SET(src, &readfdset);
-
-        printf("DEBUG select: Waiting for new messages bitches\n");
-        // wait for messages from the source socket
-        ret = select(1, &readfdset, NULL, NULL, &tv);
-        if (ret == -1 && errno == EINTR) continue;
-        if (ret == -1) return ret;
-        if (ret == 0) return TIME_OUT_EXPIRED;
-
-        printf("Message received\n");
-        SEM_LOCK(sop, semid);*/
-
         ret = recv_from_client(src, temp, buf_len);
         if (ret < 0) return ret;
 
@@ -238,8 +218,6 @@ int chat_handler(int src, int dst, int semid)
         snprintf(buf, buf_len, "1%s", temp);
         ret = send_to_client(dst, buf);
         if (ret < 0) return ret;
-
-        //SEM_RELEASE(sop, semid);
     }
     return 0;
 }
@@ -461,16 +439,13 @@ int main()
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
-    int semid = semget(IPC_PRIVATE, /* semnum = */ 2, IPC_CREAT | 0660);
+    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
-    // initialize the two semaphores to 1 -- the first one is used to synchronize the access to the
-    // users list, the second one is used to synchronize the socket access
+    // initialize the semaphore to 1 -- is used to synchronize the access to the users list
     union semun arg;
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
-    ERROR_HELPER(ret, "Cannot initialize the semaphore");
-    ret = semctl(semid, 1, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */

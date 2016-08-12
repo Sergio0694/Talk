@@ -53,8 +53,8 @@ int recv_from_socket(SOCKET socket, char* buf, size_t buf_len)
         if (ret == SOCKET_ERROR) fprintf(stderr, "%d: ", WSAGetLastError());
         ERROR_HELPER(ret == SOCKET_ERROR, "Cannot read from socket!");
         if (buf[bytes_read] == '\n') break;
+        if (bytes_read == buf_len - 1) break;
         bytes_read += ret;
-        if (bytes_read == buf_len) break;
     }
     buf[bytes_read] = STRING_TERMINATOR;
     return bytes_read;
