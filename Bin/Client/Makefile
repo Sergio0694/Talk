@@ -4,7 +4,7 @@ CFLAGS = -O2 -lws2_32
 CFDEBUG = -Wall
 
 # objs
-OBJ = client_util.o client_list.o guid.o string_helper.o
+OBJ = client_util.o client_list.o guid.o string_helper.o client_graphics.o
 EXE = client.exe
 
 # directories

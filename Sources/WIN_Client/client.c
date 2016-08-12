@@ -12,6 +12,7 @@
 #include "..\Shared\guid.h"
 #include "..\Shared\string_helper.h"
 #include "..\Shared\types.h"
+#include "client_graphics.h"
 
 #define SERVER_IP "192.168.56.101"
 #define LOCAL_HOST "127.0.0.1"
@@ -32,8 +33,6 @@ typedef struct thread_params_s
 typedef struct chat_thread_args_s
 {
     string_t username;
-    HANDLE chat_window_semaphore;
-    SOCKET chat_window_socket;
 } chat_thread_args_t;
 
 /* ======== GLOBALS ======== */
@@ -329,19 +328,41 @@ void send_target_guid(const guid_t guid)
     send_to_socket(socketd, serialized);
 }
 
+void print_message(char* message, int len)
+{
+    int color = message[0] == '0' ? GREEN_TEXT : RED_TEXT;
+    int i;
+    change_console_color(DARK_TEXT);
+    for (i = 1; i < len; i++)
+    {
+        if (message[i] == '[')
+        {
+            printf("[");
+            change_console_color(color);
+        }
+        else if (message[i] == ']')
+        {
+            change_console_color(DARK_TEXT);
+            printf("]");
+            change_console_color(WHITE_TEXT);
+        }
+        else printf("%c", message[i]);
+    }
+    printf("\n");
+}
+
 // First chat handler that receives messages from the server
 DWORD WINAPI chat_handler_in(LPVOID arg)
 {
     // Unpack the arguments
     chat_thread_args_t* parameters = (chat_thread_args_t*)arg;
-    HANDLE chat_window_semaphore = parameters->chat_window_semaphore;
-    SOCKET chat_window_socket = parameters->chat_window_socket;
     string_t username = parameters->username;
 
     while (TRUE)
     {
         // Receive the message from the server
         char buffer[BUFFER_LENGTH];
+        SecureZeroMemory(buffer, BUFFER_LENGTH);
         recv_from_socket(socketd, buffer, BUFFER_LENGTH);
 
         // Calculate the username to display
@@ -350,21 +371,11 @@ DWORD WINAPI chat_handler_in(LPVOID arg)
 
         // Display the message in the target console
         char message[BUFFER_LENGTH];
+        SecureZeroMemory(message, BUFFER_LENGTH);
         char* temp_name = userIndex == 0 ? "Me" : username;
         snprintf(message, BUFFER_LENGTH, "%d[%s]%s", userIndex, temp_name, buffer + 1);
-        printf("DEBUG message to send to chat window %s -- userIndex %d\n",
-                message, userIndex);
-
-        // Lock and send the message to the console
-        DWORD ret = WaitForSingleObject(chat_window_semaphore, INFINITE);
-        ERROR_HELPER(ret == WAIT_FAILED, "Error waiting for the semaphore");
-        send_to_socket(chat_window_socket, message);
-        BOOL released = ReleaseSemaphore(
-            chat_window_semaphore, // Semaphore to release
-            1, // Release increment
-            NULL // Ignore the previous semaphore count
-        );
-        ERROR_HELPER(!released, "Error releasing the semaphore");
+        int len = strlen(message);
+        print_message(message, len);
     }
     return TRUE;
 }
@@ -372,11 +383,6 @@ DWORD WINAPI chat_handler_in(LPVOID arg)
 // Second chat handler that reads the new user messages and sends them
 DWORD WINAPI chat_handler_out(LPVOID arg)
 {
-    // Unpack the arguments
-    chat_thread_args_t* parameters = (chat_thread_args_t*)arg;
-    HANDLE chat_window_semaphore = parameters->chat_window_semaphore;
-    SOCKET chat_window_socket = parameters->chat_window_socket;
-
     while (TRUE)
     {
         // Send the new message if necessary
@@ -384,73 +390,13 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
         char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
         if (gets_ret == NULL) continue;
         send_to_socket(socketd, message);
-
-        // Send the message to the chat window
-        char chat_window_message[BUFFER_LENGTH];
-        snprintf(chat_window_message, BUFFER_LENGTH, "0[Me]%s", message);
-
-        // Lock and send the message to the console
-        DWORD ret = WaitForSingleObject(chat_window_semaphore, INFINITE);
-        ERROR_HELPER(ret == WAIT_FAILED, "Error waiting for the semaphore");
-        send_to_socket(chat_window_socket, chat_window_message);
-        BOOL released = ReleaseSemaphore(
-            chat_window_semaphore, // Semaphore to release
-            1, // Release increment
-            NULL // Ignore the previous semaphore count
-        );
-        ERROR_HELPER(!released, "Error releasing the semaphore");
     }
 }
 
 void chat(string_t username)
 {
-    printf("Press enter to open a chat console\n");
-    char buf[2];
-    char* enter = fgets(buf, 1, stdin);
-    ERROR_HELPER(enter == NULL, "Error in fgets");
-
-    // Open the console window
-    printf("DEBUG opening new console ...\n");
-    consoleWindow = prepare_chat_window();
-
-    // Try to create the socket
-    SOCKET chat_window_socket = socket(AF_INET, SOCK_STREAM, 0);
-    ERROR_HELPER(socketd == INVALID_SOCKET, "There was an error while creating the socket");
-
-    // Create the address struct and set the default values
-    struct sockaddr_in server_addr = { 0 };
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(chat_window_port);
-
-    // Get the IP address in network byte order
-    u_long inner_addr = inet_addr(LOCAL_HOST);
-    server_addr.sin_addr.s_addr = inner_addr;
-
-    // Try to connect
-    int ret;
-    while (TRUE)
-    {
-        ret = connect(chat_window_socket, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_in));
-        if (ret == SOCKET_ERROR && WSAGetLastError() == WSAEHOSTUNREACH) continue;
-        ERROR_HELPER(ret == SOCKET_ERROR, "Error in the connect function");
-        break;
-    }
-
-    printf("DEBUG connected to chat window socket!\n");
-
-    // Prepare the shared semaphore
-    HANDLE chat_window_sem = CreateSemaphore(
-        NULL, // Default security attributes
-        1, // Initial count to 1, mutual exclusion
-        1, // Maximum count
-        NULL // Unnamed semaphore
-    );
-    ERROR_HELPER(chat_window_sem == NULL, "Error creating the semaphore");
-
     // Prepare the threads structure
     chat_thread_args_t arg = { 0 };
-    arg.chat_window_semaphore = chat_window_sem;
-    arg.chat_window_socket = chat_window_socket;
     arg.username = username;
 
     // Setup the chat threads
