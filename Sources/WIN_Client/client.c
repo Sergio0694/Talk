@@ -1,11 +1,12 @@
 #include <stdlib.h>
 #include <winsock2.h>
-#include <Windows.h>
+#include <windows.h>
 #include <Winbase.h>
 #include <Ws2tcpip.h> /* InetPton() */
 #include <string.h>   /* strncpy() */
 #include <ctype.h>    /* isdigit() */
 #include <time.h>
+#include <errno.h>
 
 #include "client_util.h"
 #include "ClientList\client_list.h"
@@ -107,7 +108,8 @@ static void choose_name()
     {
         // Choose a name and ask the server if it's valid
         gets_ret = fgets(buffer, BUFFER_LENGTH, stdin);
-        ERROR_HELPER(gets_ret == NULL, "fgets fails");
+        ERROR_HELPER(gets_ret == NULL && ferror(stdin) &&
+            GetLastError() != ERROR_OPERATION_ABORTED, "fgets fails");
 
         printf("Name chosen %s\nTrying to send it to the server\n", buffer);
         // Sends the name to the server and waits for a response
@@ -199,10 +201,16 @@ DWORD WINAPI picker_handler_out(LPVOID arg)
     while (TRUE)
     {
         // Read an integer from stdin require conversion, inline required by TerminateThread
-        char buf[10];
         const int maxIntCharLen = 10;
+        char buf[maxIntCharLen];
+        /*printf("DEBUG reading from stdin\n");
+        HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        BOOL success = ReadFile(hStdin, (LPVOID)buf, (DWORD)maxIntCharLen, NULL, NULL);
+        ERROR_HELPER(!success && GetLastError() != ERROR_OPERATION_ABORTED, "Error ReadFile");*/
         char* res = fgets(buf, maxIntCharLen, stdin);
-        ERROR_HELPER(res == NULL, "Error reading from the input buffer");
+        ERROR_HELPER(res == NULL && ferror(stdin) &&
+            GetLastError() != ERROR_OPERATION_ABORTED, "Error reading from the input buffer");
+        //printf("DEBUG Something read from stdin --> %s\n", buf);
         if (strncmp(buf, "R", 1) == 0)
         {
             printf("DEBUG refresh requested\n");
@@ -311,6 +319,12 @@ guid_t* pick_target_user(string_t* username)
     guid_t* return_value = arg.output_guid;
 
     // Cleanup
+    BOOL success = CancelSynchronousIo(picker_threads[0]);
+    if (!success) printf("%lu\n", GetLastError());
+    ERROR_HELPER(!success && GetLastError() != ERROR_NOT_FOUND, "Error CancelSynchronousIo");
+    success = CancelSynchronousIo(picker_threads[1]);
+    if (!success) printf("%lu\n", GetLastError());
+    ERROR_HELPER(!success&& GetLastError() != ERROR_NOT_FOUND, "Error CancelSynchronousIo");
     ERROR_HELPER(!(TerminateThread(picker_threads[0], TRUE)
         || TerminateThread(picker_threads[1], TRUE)),
         "Error closing the picker threads");
@@ -388,6 +402,8 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
         // Send the new message if necessary
         char message[BUFFER_LENGTH];
         char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
+        ERROR_HELPER(gets_ret == NULL && ferror(stdin) &&
+            GetLastError() != ERROR_OPERATION_ABORTED, "Error in fgets");
         if (gets_ret == NULL) continue;
         send_to_socket(socketd, message);
     }
