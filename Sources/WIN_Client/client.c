@@ -29,6 +29,13 @@ typedef struct thread_params_s
     HANDLE race_condition_sem;
 } thread_params_t;
 
+typedef struct chat_thread_args_s
+{
+    string_t username;
+    HANDLE chat_window_semaphore;
+    SOCKET chat_window_socket;
+} chat_thread_args_t;
+
 /* ======== GLOBALS ======== */
 guid_t client_guid;
 client_list_t client_users_list = NULL;
@@ -171,11 +178,12 @@ DWORD WINAPI picker_handler_in(LPVOID arg)
     printf("DEBUG: %s\n", *username);
 
     // Unlock the caller
-    ReleaseSemaphore(
+    BOOL released = ReleaseSemaphore(
         semaphore, // Semaphore to release
         1, // Release increment
         NULL // I don't care about the previous semaphore count
     );
+    ERROR_HELPER(!released, "Error releasing the semaphore");
     return TRUE;
 }
 
@@ -191,7 +199,7 @@ DWORD WINAPI picker_handler_out(LPVOID arg)
     guid_t* return_value;
     while (TRUE)
     {
-        // Read an integer from stdin require conversion and i need inlining for use TerminateThread
+        // Read an integer from stdin require conversion, inline required by TerminateThread
         char buf[10];
         const int maxIntCharLen = 10;
         char* res = fgets(buf, maxIntCharLen, stdin);
@@ -209,7 +217,7 @@ DWORD WINAPI picker_handler_out(LPVOID arg)
         int number = atoi(buf);
         printf("%d\n", number);
 
-        // The target value has been converted, go for the checks
+        // The target value has been converted, check the result
         int target = number;
         if (target == -1)
         {
@@ -239,11 +247,12 @@ DWORD WINAPI picker_handler_out(LPVOID arg)
     parameters->username = NULL;
 
     // Unlock the caller
-    ReleaseSemaphore(
+    BOOL released = ReleaseSemaphore(
         semaphore, // Semaphore to release
         1, // Release increment
-        NULL // I don't care about the previous semaphore count
+        NULL // Ignore the previous semaphore count
     );
+    ERROR_HELPER(!released, "Error releasing the semaphore");
     return TRUE;
 }
 
@@ -281,7 +290,7 @@ guid_t* pick_target_user(string_t* username)
     picker_threads[0] = CreateThread(
         NULL,       // Default security attributes
         0,          // Default stack size
-        (LPTHREAD_START_ROUTINE) picker_handler_in, // Handler function
+        (LPTHREAD_START_ROUTINE)picker_handler_in, // Handler function
         (LPVOID)&arg, // Handler arguments
         0,          // Default creation flags
         NULL); // Ignore the thread identifier
@@ -289,7 +298,7 @@ guid_t* pick_target_user(string_t* username)
     picker_threads[1] = CreateThread(
         NULL,       // Default security attributes
         0,          // Default stack size
-        (LPTHREAD_START_ROUTINE) picker_handler_out, // Handler function
+        (LPTHREAD_START_ROUTINE)picker_handler_out, // Handler function
         (LPVOID)&arg, // Handler arguments
         0,          // Default creation flags
         NULL); // Ignore the thread identifier
@@ -318,6 +327,79 @@ void send_target_guid(const guid_t guid)
     string_t serialized = serialize_guid(guid);
     serialized = strncat(serialized, "\n", strlen(serialized) + 1);
     send_to_socket(socketd, serialized);
+}
+
+// First chat handler that receives messages from the server
+DWORD WINAPI chat_handler_in(LPVOID arg)
+{
+    // Unpack the arguments
+    chat_thread_args_t* parameters = (chat_thread_args_t*)arg;
+    HANDLE chat_window_semaphore = parameters->chat_window_semaphore;
+    SOCKET chat_window_socket = parameters->chat_window_socket;
+    string_t username = parameters->username;
+
+    while (TRUE)
+    {
+        // Receive the message from the server
+        char buffer[BUFFER_LENGTH];
+        recv_from_socket(socketd, buffer, BUFFER_LENGTH);
+
+        // Calculate the username to display
+        char tmp[2] = { buffer[0], '\0' };
+        int userIndex = atoi(tmp);
+
+        // Display the message in the target console
+        char message[BUFFER_LENGTH];
+        char* temp_name = userIndex == 0 ? "Me" : username;
+        snprintf(message, BUFFER_LENGTH, "%d[%s]%s", userIndex, temp_name, buffer + 1);
+        printf("DEBUG message to send to chat window %s -- userIndex %d\n",
+                message, userIndex);
+
+        // Lock and send the message to the console
+        DWORD ret = WaitForSingleObject(chat_window_semaphore, INFINITE);
+        ERROR_HELPER(ret == WAIT_FAILED, "Error waiting for the semaphore");
+        send_to_socket(chat_window_socket, message);
+        BOOL released = ReleaseSemaphore(
+            chat_window_semaphore, // Semaphore to release
+            1, // Release increment
+            NULL // Ignore the previous semaphore count
+        );
+        ERROR_HELPER(!released, "Error releasing the semaphore");
+    }
+    return TRUE;
+}
+
+// Second chat handler that reads the new user messages and sends them
+DWORD WINAPI chat_handler_out(LPVOID arg)
+{
+    // Unpack the arguments
+    chat_thread_args_t* parameters = (chat_thread_args_t*)arg;
+    HANDLE chat_window_semaphore = parameters->chat_window_semaphore;
+    SOCKET chat_window_socket = parameters->chat_window_socket;
+
+    while (TRUE)
+    {
+        // Send the new message if necessary
+        char message[BUFFER_LENGTH];
+        char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
+        if (gets_ret == NULL) continue;
+        send_to_socket(socketd, message);
+
+        // Send the message to the chat window
+        char chat_window_message[BUFFER_LENGTH];
+        snprintf(chat_window_message, BUFFER_LENGTH, "0[Me]%s", message);
+
+        // Lock and send the message to the console
+        DWORD ret = WaitForSingleObject(chat_window_semaphore, INFINITE);
+        ERROR_HELPER(ret == WAIT_FAILED, "Error waiting for the semaphore");
+        send_to_socket(chat_window_socket, chat_window_message);
+        BOOL released = ReleaseSemaphore(
+            chat_window_semaphore, // Semaphore to release
+            1, // Release increment
+            NULL // Ignore the previous semaphore count
+        );
+        ERROR_HELPER(!released, "Error releasing the semaphore");
+    }
 }
 
 void chat(string_t username)
@@ -356,60 +438,46 @@ void chat(string_t username)
 
     printf("DEBUG connected to chat window socket!\n");
 
-    while (TRUE)
-    {
-        ret = fflush(stdin);
-        ERROR_HELPER(ret != 0, "Error while flushing the stdin");
+    // Prepare the shared semaphore
+    HANDLE chat_window_sem = CreateSemaphore(
+        NULL, // Default security attributes
+        1, // Initial count to 1, mutual exclusion
+        1, // Maximum count
+        NULL // Unnamed semaphore
+    );
+    ERROR_HELPER(chat_window_sem == NULL, "Error creating the semaphore");
 
-        HANDLE sources[2];
-        sources[1] = GetStdHandle(STD_INPUT_HANDLE);
-        //sources[1] = event_handle;
-        sources[0] = WSACreateEvent();
-        WSAEventSelect(socketd, sources[0], FD_READ);
+    // Prepare the threads structure
+    chat_thread_args_t arg = { 0 };
+    arg.chat_window_semaphore = chat_window_sem;
+    arg.chat_window_socket = chat_window_socket;
+    arg.username = username;
 
-        // Wait for the stdin and the socket
-        int index = WaitForMultipleObjects(2, sources, FALSE, INFINITE);
-        ERROR_HELPER(index == WAIT_FAILED || index == WAIT_TIMEOUT,
-            "Error in the WaitForMultipleObjects call");
+    // Setup the chat threads
+    HANDLE threads[2];
+    threads[0] = CreateThread(
+        NULL,       // Default security attributes
+        0,          // Default stack size
+        (LPTHREAD_START_ROUTINE)chat_handler_in, // Handler function
+        (LPVOID)&arg, // Handler arguments
+        0,          // Default creation flags
+        NULL); // Ignore the thread identifier
+    ERROR_HELPER(threads[0] == NULL, "Error creating the first picker thread");
+    threads[1] = CreateThread(
+        NULL,       // Default security attributes
+        0,          // Default stack size
+        (LPTHREAD_START_ROUTINE)chat_handler_out, // Handler function
+        (LPVOID)&arg, // Handler arguments
+        0,          // Default creation flags
+        NULL); // Ignore the thread identifier
 
-        printf("DEBUG Something has changed his state %d: %s\n", index, index == 0 ? "SOCKET" : "stdin");
-
-        // Check if there is a new message to display
-        if (index == 0)
-        {
-            // Receive the message from the server
-            char buffer[BUFFER_LENGTH];
-            recv_from_socket(socketd, buffer, BUFFER_LENGTH);
-
-            // Calculate the username to display
-            char tmp[2] = { buffer[0], '\0' };
-            int userIndex = atoi(tmp);
-
-            // Display the message in the target console
-            char message[BUFFER_LENGTH];
-            char* temp_name = userIndex == 0 ? "Me" : username;
-            snprintf(message, BUFFER_LENGTH, "%d[%s]%s", userIndex, temp_name, buffer + 1);
-            printf("DEBUG message to send to chat window %s -- userIndex %d\n",
-                    message, userIndex);
-            send_to_socket(chat_window_socket, message);
-        }
-        else if (index == 1)
-        {
-            // Send the new message if necessary
-            char message[BUFFER_LENGTH];
-            char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
-            if (gets_ret == NULL) continue;
-            send_to_socket(socketd, message);
-
-            // Send the message to the chat window
-            char chat_window_message[BUFFER_LENGTH];
-            snprintf(chat_window_message, BUFFER_LENGTH, "0[Me]%s", message);
-            send_to_socket(chat_window_socket, chat_window_message);
-        }
-    }
+    // TODO: close the two threads when necessary
+    DWORD join = WaitForMultipleObjects(2, threads, TRUE, INFINITE);
+    ERROR_HELPER(join == WAIT_FAILED, "Error while joining the two threads");
 
     // Close the message console
-    // TODO...
+    BOOL close_res = CloseHandle(consoleWindow);
+    ERROR_HELPER(!close_res, "Error closing the chat window");
 }
 
 BOOL CtrlHandler(DWORD fdwCtrlType)
