@@ -37,32 +37,6 @@ SOCKET socketd = INVALID_SOCKET;
 int chat_window_port;
 /* ========================= */
 
-/*
-// Thread function to handle the pressing of the return key
-DWORD return_handler(LPVOID params)
-{
-    int ret;
-
-    thread_params_t* args = (thread_params_t*)params;
-    HANDLE stdin_handle = args->stdin_handle;
-    HANDLE event = args->event_handle;
-
-    while (TRUE)
-    {
-        ret = WaitForSingleObject(stdin_handle, INFINITE);
-        ERROR_HELPER(ret == WAIT_FAILED, "Error in WaitForSingleObject");
-        if (GetAsyncKeyState(VK_RETURN))
-        {
-            printf("DEBUG \\n key pressed - signaling ... \n");
-            ret = SetEvent(event);
-            ERROR_HELPER(ret == 0, "Error while signaling the event");
-            ret = ResetEvent(event);
-            ERROR_HELPER(ret == 0, "Error while resetting the event");
-        }
-    }
-}
-*/
-
 HANDLE prepare_chat_window()
 {
     STARTUPINFO startup_info;
@@ -172,27 +146,6 @@ static void load_users_list()
     print_list(client_users_list, print_single_user);
 }
 
-int read_integer()
-{
-    char buf[10];
-    const int maxIntCharLen = 10;
-    char* res = fgets(buf, maxIntCharLen, stdin);
-    ERROR_HELPER(res == NULL, "Error reading from the input buffer");
-    if (strncmp(buf, "R", 1) == 0)
-    {
-        printf("DEBUG refresh requested\n");
-        return REFRESH;
-    }
-    int i = 0;
-    while (buf[i] != '\n')
-    {
-        if (!isdigit((int)buf[i++])) return -1;
-    }
-    int number = atoi(buf);
-    printf("%d\n", number);
-    return number >= 0 ? number : -1;
-}
-
 // First picker function that checks for a request by another user
 DWORD WINAPI picker_handler_in(LPVOID arg)
 {
@@ -238,7 +191,26 @@ DWORD WINAPI picker_handler_out(LPVOID arg)
     guid_t* return_value;
     while (TRUE)
     {
-        int target = read_integer();
+        // Read an integer from stdin require conversion and i need inlining for use TerminateThread
+        char buf[10];
+        const int maxIntCharLen = 10;
+        char* res = fgets(buf, maxIntCharLen, stdin);
+        ERROR_HELPER(res == NULL, "Error reading from the input buffer");
+        if (strncmp(buf, "R", 1) == 0)
+        {
+            printf("DEBUG refresh requested\n");
+            return REFRESH;
+        }
+        int i = 0;
+        while (buf[i] != '\n')
+        {
+            if (!isdigit((int)buf[i++])) return -1;
+        }
+        int number = atoi(buf);
+        printf("%d\n", number);
+
+        // The target value has been converted, go for the checks
+        int target = number;
         if (target == -1)
         {
             printf("The selected index isn't valid\n");
@@ -350,6 +322,11 @@ void send_target_guid(const guid_t guid)
 
 void chat(string_t username)
 {
+    printf("Press enter to open a chat console\n");
+    char buf[2];
+    char* enter = fgets(buf, 1, stdin);
+    ERROR_HELPER(enter == NULL, "Error in fgets");
+
     // Open the console window
     printf("DEBUG opening new console ...\n");
     consoleWindow = prepare_chat_window();
@@ -457,20 +434,6 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
         close_res = CloseHandle(consoleWindow);
         ERROR_HELPER(!close_res, "Error closing the chat window");
     }
-
-    /*
-    // Close the thread, if necessary
-    if (return_thread != NULL)
-    {
-        close_res = CloseHandle(return_thread);
-        ERROR_HELPER(!close_res, "Error closing the return thread");
-    }
-    if (event_handle != NULL)
-    {
-        close_res = CloseHandle(event_handle);
-        ERROR_HELPER(!close_res, "Error closing the event handle");
-    }
-    */
 
     // Confirm and return the result
     printf("SHUT DOWN completed\n");
