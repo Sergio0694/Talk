@@ -3,8 +3,6 @@
 #include <unistd.h>     /* close() */
 #include <pthread.h>
 #include <signal.h>
-#include <arpa/inet.h>  /* htons(), ntohs() and inet_ntop() */
-#include <netinet/in.h> /* struct sockaddr_in, INADDR_ANY, INET_ADDSTRLEN */
 #include <sys/socket.h>
 #include <sys/time.h>   /* struct timeval */
 #include <sys/types.h>  /* key_t, pthread_t */
@@ -27,10 +25,9 @@ typedef struct thread_args_s
 {
     int sock_desc;
     int semid;
-    struct sockaddr_in* address;
 } conn_thread_args_t;
 
-list_t users_list;
+list_t users_list = NULL;
 
 // used in calls to semctl()
 union semun
@@ -50,7 +47,6 @@ union semun
 static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 {
     int socketd = args->sock_desc;
-    struct sockaddr_in* client_addr = args->address;
 
     fprintf(stderr, "%s\n", msg);
 
@@ -60,7 +56,6 @@ static void close_and_cleanup(conn_thread_args_t* args, char* msg)
         if (ret == -1 && errno == EINTR) continue;
         else break;
     }
-    free(client_addr);
     free(args);
     pthread_exit(NULL);
 }
@@ -193,7 +188,7 @@ int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
 
 // Function executed by both the chooser and the chosen clients, src and dst represent the sockets
 // by which the server receive and send the chat message from the two clients
-int chat_handler(int src, int dst, int semid)
+int chat_handler(int src, int dst)
 {
     // aux variables
     char buf[BUFFER_LENGTH], temp[BUFFER_LENGTH];
@@ -203,28 +198,8 @@ int chat_handler(int src, int dst, int semid)
     struct timeval tv;
     set_timeval(&tv, 120, 0);
 
-    // sync stuff for the chat will be handled by semaphore two
-    struct sembuf sop = { 0 };
-    sop.sem_num = 1;
-
     while (TRUE)
     {
-        /*
-        // create the set for the select call
-        fd_set readfdset;
-        FD_ZERO(&readfdset);
-        FD_SET(src, &readfdset);
-
-        printf("DEBUG select: Waiting for new messages bitches\n");
-        // wait for messages from the source socket
-        ret = select(1, &readfdset, NULL, NULL, &tv);
-        if (ret == -1 && errno == EINTR) continue;
-        if (ret == -1) return ret;
-        if (ret == 0) return TIME_OUT_EXPIRED;
-
-        printf("Message received\n");
-        SEM_LOCK(sop, semid);*/
-
         ret = recv_from_client(src, temp, buf_len);
         if (ret < 0) return ret;
 
@@ -238,8 +213,6 @@ int chat_handler(int src, int dst, int semid)
         snprintf(buf, buf_len, "1%s", temp);
         ret = send_to_client(dst, buf);
         if (ret < 0) return ret;
-
-        //SEM_RELEASE(sop, semid);
     }
     return 0;
 }
@@ -251,10 +224,9 @@ void* client_connection_handler(void* arg)
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int communication_socket = args->sock_desc;
     int semid = args->semid;
-    struct sockaddr_in* client_addr = args->address;
 
     // aux variables
-    char buf[BUFFER_LENGTH], client_ip[INET_ADDRSTRLEN];
+    char buf[BUFFER_LENGTH];
     size_t buf_len = sizeof(buf);
     int ret;
     string_t temp, name;
@@ -266,10 +238,6 @@ void* client_connection_handler(void* arg)
 
     // timeval struct for recv timeout
     struct timeval tv;
-
-    // parse client IP address and port
-    inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN);
-    uint16_t client_port = ntohs(client_addr->sin_port);
 
     // Welcome message
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
@@ -302,7 +270,7 @@ void* client_connection_handler(void* arg)
     struct sembuf sop = { 0 };
     SEM_LOCK(sop, semid);
     // add the user to users_list
-    add(users_list, name, guid, communication_socket);
+    add(users_list, name, guid, communication_socket, semid);
     // make the users_list available
     SEM_RELEASE(sop, semid);
 
@@ -424,7 +392,7 @@ void* client_connection_handler(void* arg)
         printf("DEBUG name sent\nStarting a chat session..\n");
 
         // start the chat
-        ret = chat_handler(communication_socket, chosen_socket, semid);
+        ret = chat_handler(communication_socket, chosen_socket);
         if (ret == TIME_OUT_EXPIRED)
         {
             fprintf(stderr, "Removing guid\n");
@@ -445,12 +413,40 @@ void* client_connection_handler(void* arg)
     } // end of while
 }
 
+// Handler for SIGINT and SIGHUP
+void signal_handler(int signum)
+{
+    if (users_list != NULL)
+    {
+        fprintf(stderr, "\nSignal received, cleaning the users list\n");
+        destroy_list(&users_list);
+        fprintf(stderr, "Goodbye!\n");
+    }
+    exit(EXIT_SUCCESS);
+}
+
+// Error checked signal call
+void add_signal(int signum, void (*f)(int))
+{
+    void (*ret)(int) = signal(signum, f);
+    if (ret == SIG_ERR)
+    {
+        fprintf(stderr, "Error in signal function\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void add_sigaction(int signum, struct sigaction act)
+{
+    int ret = sigaction(signum, &act, NULL);
+    ERROR_HELPER(ret, "Error in sigaction");
+}
+
 int main()
 {
     // aux var
     int ret;
     int socket_desc, client_desc;
-    int sockaddr_len = sizeof(struct sockaddr_in);
 
     // server setup
     users_list = create_list();
@@ -461,32 +457,42 @@ int main()
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
-    int semid = semget(IPC_PRIVATE, /* semnum = */ 2, IPC_CREAT | 0660);
+    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
-    // initialize the two semaphores to 1 -- the first one is used to synchronize the access to the
-    // users list, the second one is used to synchronize the socket access
+    // initialize the semaphore to 1 -- is used to synchronize the access to the users list
     union semun arg;
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
-    ERROR_HELPER(ret, "Cannot initialize the semaphore");
-    ret = semctl(semid, 1, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */
 
     // preventing the generation of SIGPIPE -- an EPIPE will be generated instead
-    signal(SIGPIPE, SIG_IGN);
+    add_signal(SIGPIPE, SIG_IGN);
 
-    // we allocate client_addr dynamically and initialize it to zero
-    struct sockaddr_in* client_addr = calloc(1, sizeof(struct sockaddr_in));
+    // Ignore the sigchild event (should not happen anyway)
+    add_signal(SIGCHLD, SIG_IGN);
+
+    // prepare the arguments for the sigaction call
+    sigset_t mask;
+    sigfillset(&mask);
+    struct sigaction act = { 0 };
+    act.sa_handler = signal_handler;
+    act.sa_mask = mask;
+
+    // Handling all signals that matter with the same function
+    add_sigaction(SIGHUP, act);
+    add_sigaction(SIGINT, act);
+    add_sigaction(SIGTERM, act);
+    add_sigaction(SIGQUIT, act);
 
     while(TRUE)
     {
         printf("Waiting for connections ...\n");
 
-        // accept incoming connection
-        client_desc = accept(socket_desc, (struct sockaddr*)client_addr, (socklen_t*)&sockaddr_len);
+        // accept incoming connection - don't care about the client address
+        client_desc = accept(socket_desc, NULL, NULL);
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
 
@@ -503,7 +509,6 @@ int main()
         }
         args->sock_desc = client_desc;
         args->semid = semid;
-        args->address = client_addr;
 
         if (pthread_create(&thread, NULL, client_connection_handler, args) != 0)
         {
@@ -512,8 +517,5 @@ int main()
         }
 
         pthread_detach(thread);
-
-        // we can't just reset fields: we need a new buffer for client_addr!
-        client_addr = calloc(1, sizeof(struct sockaddr_in));
     }
 }
