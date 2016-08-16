@@ -86,7 +86,7 @@ void server_intial_setup(int socket_desc)
     ERROR_HELPER(ret, "Cannot set SO_REUSEADDR option");
 
     // bind address to socket
-    ret = bind(socket_desc, (struct sockaddr*) &server_addr, sockaddr_len);
+    ret = bind(socket_desc, (struct sockaddr*)&server_addr, sockaddr_len);
     ERROR_HELPER(ret, "Cannot bind address to socket");
 
     // start listening

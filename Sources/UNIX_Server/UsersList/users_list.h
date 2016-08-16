@@ -49,7 +49,7 @@ int get_list_length(list_t list);
 *    name ---> The name of the new node
 *    guid ---> The GUID of the new node
 *    ip ---> The IP of the new node */
-void add(list_t list, string_t name, guid_t guid, int socket);
+void add(list_t list, string_t name, guid_t guid, int socket, int semid);
 
 /* =====================================================================
 *  RemoveGUID

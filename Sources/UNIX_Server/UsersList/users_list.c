@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h> /* close() */
 #include <errno.h>
+#include <sys/sem.h>
 
 #include "users_list.h"
 
@@ -19,6 +20,7 @@ struct listElem
     bool_t available;
     bool_t connection_requested;
     int socket;
+    int semid; // semaphore per user -- used to close the semaphore properly
     struct listElem* next;
     struct listElem* previous;
 };
@@ -69,6 +71,8 @@ void destroy_list(list_t* list)
 {
     int ret;
 
+    if (list == NULL) return;
+
     // Deallocate all the nodes in the list
     nodePointer pointer = (*list)->head;
     while (pointer != NULL)
@@ -78,21 +82,29 @@ void destroy_list(list_t* list)
         pointer = pointer->next;
 
         // Deallocate the content of the node and the node itself
+        printf("DEBUG cleaning the name\n");
         free(temp->name);
+        printf("DEBUG cleaning the guid\n");
         free(temp->guid);
+        printf("DEBUG cleaning the partner guid\n");
         free(temp->partner_req);
         while (TRUE)
         {
+            printf("DEBUG closing the socket\n");
             ret = close(temp->socket);
             if (ret == -1 && errno == EINTR) continue;
             else if (ret == -1) exit(EXIT_FAILURE);
             else break;
         }
-        free(temp);
+        printf("DEBUG removing the semaphore\n");
+        ret = semctl(temp->semid, 0, IPC_RMID, NULL);
+        //printf("DEBUG cleaning the temp node\n");
+        //free(temp);
     }
 
     // Finally free the list header
-    free(list);
+    free((*list));
+    printf("DEBUG SUCCESS!\n");
 }
 
 // Get length
@@ -103,7 +115,7 @@ int get_list_length(list_t list)
 }
 
 // Add
-void add(list_t list, string_t name, guid_t guid, int socket)
+void add(list_t list, string_t name, guid_t guid, int socket, int semid)
 {
     // Allocate the new node and set its info
     nodePointer node = (nodePointer)malloc(sizeof(listNode));
@@ -116,6 +128,7 @@ void add(list_t list, string_t name, guid_t guid, int socket)
     node->socket = socket;
     node->guid = guid;
     node->available = TRUE;
+    node->semid = semid;
     node->connection_requested = FALSE;
     node->next = NULL;
 

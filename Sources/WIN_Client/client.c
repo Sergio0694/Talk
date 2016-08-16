@@ -319,12 +319,12 @@ guid_t* pick_target_user(string_t* username)
     guid_t* return_value = arg.output_guid;
 
     // Cleanup
-    BOOL success = CancelSynchronousIo(picker_threads[0]);
+    /*BOOL success = CancelSynchronousIo(picker_threads[0]);
     if (!success) printf("%lu\n", GetLastError());
     ERROR_HELPER(!success && GetLastError() != ERROR_NOT_FOUND, "Error CancelSynchronousIo");
     success = CancelSynchronousIo(picker_threads[1]);
     if (!success) printf("%lu\n", GetLastError());
-    ERROR_HELPER(!success&& GetLastError() != ERROR_NOT_FOUND, "Error CancelSynchronousIo");
+    ERROR_HELPER(!success&& GetLastError() != ERROR_NOT_FOUND, "Error CancelSynchronousIo");*/
     ERROR_HELPER(!(TerminateThread(picker_threads[0], TRUE)
         || TerminateThread(picker_threads[1], TRUE)),
         "Error closing the picker threads");
@@ -468,7 +468,6 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
     // Confirm and return the result
     printf("SHUT DOWN completed\n");
     exit(EXIT_SUCCESS);
-    //return TRUE;
 }
 
 int main()
