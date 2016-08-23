@@ -11,6 +11,8 @@
 #include "../../Shared/types.h"
 #include "../../Shared/string_helper.h"
 
+#define MAX_USERS 10
+
 // =================== Public types ====================
 typedef struct listBase* list_t;
 
@@ -21,7 +23,7 @@ typedef struct listBase* list_t;
 *  =====================================================================
 *  Description:
 *    Creates a new, empty list */
-list_t create_list();
+list_t create_list(int semid);
 
 /* =====================================================================
 *  DestroyList
@@ -49,7 +51,7 @@ int get_list_length(list_t list);
 *    name ---> The name of the new node
 *    guid ---> The GUID of the new node
 *    ip ---> The IP of the new node */
-void add(list_t list, string_t name, guid_t guid, int socket);
+bool_t add(list_t list, string_t name, guid_t guid, int socket);
 
 /* =====================================================================
 *  RemoveGUID

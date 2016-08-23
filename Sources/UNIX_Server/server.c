@@ -448,12 +448,6 @@ int main()
     int ret;
     int socket_desc, client_desc;
 
-    // server setup
-    users_list = create_list();
-    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
-    ERROR_HELPER(socket_desc, "Cannot open server socket");
-    server_intial_setup(socket_desc);
-
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
@@ -467,6 +461,12 @@ int main()
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */
+
+    // server setup
+    users_list = create_list(semid);
+    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
+    ERROR_HELPER(socket_desc, "Cannot open server socket");
+    server_intial_setup(socket_desc);
 
     // preventing the generation of SIGPIPE -- an EPIPE will be generated instead
     add_signal(SIGPIPE, SIG_IGN);
