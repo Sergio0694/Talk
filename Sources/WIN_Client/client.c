@@ -1,12 +1,11 @@
 #include <stdlib.h>
 #include <winsock2.h>
-#include <windows.h>
+#include <Windows.h>
 #include <Winbase.h>
 #include <Ws2tcpip.h> /* InetPton() */
 #include <string.h>   /* strncpy() */
 #include <ctype.h>    /* isdigit() */
 #include <time.h>
-#include <errno.h>
 
 #include "client_util.h"
 #include "ClientList\client_list.h"
@@ -201,25 +200,34 @@ DWORD WINAPI picker_handler_out(LPVOID arg)
     while (TRUE)
     {
         // Read an integer from stdin require conversion, inline required by TerminateThread
-        const int maxIntCharLen = 10;
+        const int maxIntCharLen = 9;
         char buf[maxIntCharLen];
+        char* res = fgets(buf, maxIntCharLen, stdin);
+        ERROR_HELPER(res == NULL && ferror(stdin), "Error reading from the input buffer");
+        //SecureZeroMemory(buf, maxIntCharLen);
         /*printf("DEBUG reading from stdin\n");
         HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
         BOOL success = ReadFile(hStdin, (LPVOID)buf, (DWORD)maxIntCharLen, NULL, NULL);
         ERROR_HELPER(!success && GetLastError() != ERROR_OPERATION_ABORTED, "Error ReadFile");*/
-        char* res = fgets(buf, maxIntCharLen, stdin);
-        ERROR_HELPER(res == NULL && ferror(stdin) &&
-            GetLastError() != ERROR_OPERATION_ABORTED, "Error reading from the input buffer");
+        /*int j = 0;
+        while (TRUE)
+        {
+            char* res = fgets(buf + (j++), 2, stdin);
+            ERROR_HELPER(res == NULL && ferror(stdin) &&
+                GetLastError() != ERROR_OPERATION_ABORTED, "Error reading from the input buffer");
+            if (buf[j - 1] == '\n') break;
+        }*/
         //printf("DEBUG Something read from stdin --> %s\n", buf);
         if (strncmp(buf, "R", 1) == 0)
         {
             printf("DEBUG refresh requested\n");
             return REFRESH;
         }
+        // TODO: Better control for non digit input
         int i = 0;
         while (buf[i] != '\n')
         {
-            if (!isdigit((int)buf[i++])) return -1;
+            if (!isdigit((int)buf[i++])) continue;
         }
         int number = atoi(buf);
         printf("%d\n", number);
@@ -404,7 +412,7 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
         char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
         ERROR_HELPER(gets_ret == NULL && ferror(stdin) &&
             GetLastError() != ERROR_OPERATION_ABORTED, "Error in fgets");
-        if (gets_ret == NULL) continue;
+        //if (gets_ret == NULL) continue;
         send_to_socket(socketd, message);
     }
 }

@@ -3,7 +3,7 @@
 #include <string.h>
 #include <unistd.h> /* close() */
 #include <errno.h>
-#include <sys/sem.h>
+//#include <sys/sem.h>
 
 #include "users_list.h"
 
@@ -20,7 +20,7 @@ struct listElem
     bool_t available;
     bool_t connection_requested;
     int socket;
-    int semid; // semaphore per user -- used to close the semaphore properly
+    //int semid; // semaphore per user -- used to close the semaphore properly
     struct listElem* next;
     struct listElem* previous;
 };
@@ -97,7 +97,7 @@ void destroy_list(list_t* list)
             else break;
         }
         printf("DEBUG removing the semaphore\n");
-        ret = semctl(temp->semid, 0, IPC_RMID, NULL);
+        //ret = semctl(temp->semid, 0, IPC_RMID, NULL);
         //printf("DEBUG cleaning the temp node\n");
         //free(temp);
     }
@@ -115,7 +115,7 @@ int get_list_length(list_t list)
 }
 
 // Add
-void add(list_t list, string_t name, guid_t guid, int socket, int semid)
+void add(list_t list, string_t name, guid_t guid, int socket)
 {
     // Allocate the new node and set its info
     nodePointer node = (nodePointer)malloc(sizeof(listNode));
@@ -128,7 +128,7 @@ void add(list_t list, string_t name, guid_t guid, int socket, int semid)
     node->socket = socket;
     node->guid = guid;
     node->available = TRUE;
-    node->semid = semid;
+    //node->semid = semid;
     node->connection_requested = FALSE;
     node->next = NULL;
 
@@ -166,6 +166,16 @@ bool_t remove_guid(list_t list, guid_t guid)
         {
             // Deallocate the content of the item
             free(pointer->name);
+            /*free(pointer->guid);
+            free(pointer->partner_req);
+            while (TRUE)
+            {
+                ret = close(temp->socket);
+                if (ret == -1 && errno == EINTR) continue;
+                else if (ret == -1) exit(EXIT_FAILURE);
+                else break;
+            }
+            ret = semctl(temp->semid, 0, IPC_RMID, NULL);*/
 
             // Adjust the references
             if (pointer->next == NULL) list->tail = NULL;

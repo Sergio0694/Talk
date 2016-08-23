@@ -23,11 +23,11 @@
 /* ===== GLOBAL VARIABLES ===== */
 typedef struct thread_args_s
 {
-    int sock_desc;
-    int semid;
+    int sock_desc;;
 } conn_thread_args_t;
 
 list_t users_list = NULL;
+int semid;
 
 // used in calls to semctl()
 union semun
@@ -63,7 +63,6 @@ static void close_and_cleanup(conn_thread_args_t* args, char* msg)
 // Performs a check on the return codes from recv_from_client function
 static inline void check_recv_error(int ret, conn_thread_args_t* args, guid_t* guid)
 {
-    int semid = args->semid;
     struct sembuf sop = { 0 };
 
     if (ret == TIME_OUT_EXPIRED)
@@ -101,7 +100,6 @@ static inline void check_recv_error(int ret, conn_thread_args_t* args, guid_t* g
 // Performs a check on the return codes from send_to_client function
 static inline void check_send_error(int ret, conn_thread_args_t* args, guid_t* guid)
 {
-    int semid = args->semid;
     struct sembuf sop = { 0 };
 
     if (ret < 0)
@@ -223,7 +221,6 @@ void* client_connection_handler(void* arg)
     // get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int communication_socket = args->sock_desc;
-    int semid = args->semid;
 
     // aux variables
     char buf[BUFFER_LENGTH];
@@ -270,7 +267,7 @@ void* client_connection_handler(void* arg)
     struct sembuf sop = { 0 };
     SEM_LOCK(sop, semid);
     // add the user to users_list
-    add(users_list, name, guid, communication_socket, semid);
+    add(users_list, name, guid, communication_socket);
     // make the users_list available
     SEM_RELEASE(sop, semid);
 
@@ -418,10 +415,13 @@ void signal_handler(int signum)
 {
     if (users_list != NULL)
     {
-        fprintf(stderr, "\nSignal received, cleaning the users list\n");
+        printf("\nDEBUG Signal received, cleaning the users list\n");
         destroy_list(&users_list);
-        fprintf(stderr, "Goodbye!\n");
     }
+    printf("DEBUG Removing the semaphore\n");
+    int ret = semctl(semid, 0, IPC_RMID, NULL);
+    ERROR_HELPER(ret, "Error while removing the semaphore");
+    printf("Goodbye!\n");
     exit(EXIT_SUCCESS);
 }
 
@@ -457,7 +457,7 @@ int main()
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
-    int semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREAT | 0660);
+    semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
     // initialize the semaphore to 1 -- is used to synchronize the access to the users list
@@ -508,7 +508,6 @@ int main()
             exit(EXIT_FAILURE);
         }
         args->sock_desc = client_desc;
-        args->semid = semid;
 
         if (pthread_create(&thread, NULL, client_connection_handler, args) != 0)
         {
