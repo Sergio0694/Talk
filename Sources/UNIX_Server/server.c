@@ -44,79 +44,35 @@ union semun
 /* ===== PRIVATE FUNCTIONS ===== */
 
 // Close everything before exiting the thread function
-static void close_and_cleanup(conn_thread_args_t* args, char* msg)
+static void close_and_cleanup(conn_thread_args_t* args, guid_t guid, char* msg)
 {
     int socketd = args->sock_desc;
-
+    remove_guid(users_list, guid);
     fprintf(stderr, "%s\n", msg);
-
-    while (TRUE)
-    {
-        int ret = close(socketd);
-        if (ret == -1 && errno == EINTR) continue;
-        else break;
-    }
     free(args);
     pthread_exit(NULL);
 }
 
 // Performs a check on the return codes from recv_from_client function
-static inline void check_recv_error(int ret, conn_thread_args_t* args, guid_t* guid)
+static inline void check_recv_error(int ret, conn_thread_args_t* args, guid_t guid)
 {
-    struct sembuf sop = { 0 };
-
-    if (ret == TIME_OUT_EXPIRED)
-    {
-        if (guid != NULL)
-        {
-            SEM_LOCK(sop, semid);
-            remove_guid(users_list, *guid);
-            SEM_RELEASE(sop, semid);
-        }
-        close_and_cleanup(args, "The client timed out");
-    }
+    if (ret == TIME_OUT_EXPIRED) close_and_cleanup(args, guid, "The client timed out");
     else if (ret == CLIENT_UNEXPECTED_CLOSE)
-    {
-        if (guid != NULL)
-        {
-            SEM_LOCK(sop, semid);
-            remove_guid(users_list, *guid);
-            SEM_RELEASE(sop, semid);
-        }
-        close_and_cleanup(args, "Unexpected close from client");
-    }
-    else if (ret == UNEXPECTED_ERROR)
-    {
-        if (guid != NULL)
-        {
-            SEM_LOCK(sop, semid);
-            remove_guid(users_list, *guid);
-            SEM_RELEASE(sop, semid);
-        }
-        close_and_cleanup(args, "Cannot read from socket");
-    }
+        close_and_cleanup(args, guid, "Unexpected close from client");
+    else if (ret == UNEXPECTED_ERROR) close_and_cleanup(args, guid, "Cannot read from socket");
 }
 
 // Performs a check on the return codes from send_to_client function
-static inline void check_send_error(int ret, conn_thread_args_t* args, guid_t* guid)
+static inline void check_send_error(int ret, conn_thread_args_t* args, guid_t guid)
 {
-    struct sembuf sop = { 0 };
-
     if (ret < 0)
     {
-        if (guid != NULL)
-        {
-            SEM_LOCK(sop, semid);
-            remove_guid(users_list, *guid);
-            SEM_RELEASE(sop, semid);
-        }
-
-        if (errno == EPIPE) close_and_cleanup(args, "EPIPE error received");
-        close_and_cleanup(args, "Cannot send the message");
+        if (errno == EPIPE) close_and_cleanup(args, guid, "EPIPE error received");
+        close_and_cleanup(args, guid, "Cannot send the message");
     }
 }
 
-static void name_pickup(conn_thread_args_t* args, char** name)
+static void name_pickup(conn_thread_args_t* args, char** name, guid_t guid)
 {
     int ret, name_len;
     char buf[BUFFER_LENGTH];
@@ -126,22 +82,22 @@ static void name_pickup(conn_thread_args_t* args, char** name)
 
     printf("Waiting for name recv\n");
     name_len = recv_from_client(socketd, buf, buf_len);
-    check_recv_error(name_len, args, NULL);
+    check_recv_error(name_len, args, guid);
     while (name_len == 0)
     {
         sprintf(buf, "0Please choose a non-empty name: ");
         ret = send_to_client(socketd, buf);
-        check_send_error(ret, args, NULL);
+        check_send_error(ret, args, guid);
         name_len = recv_from_client(socketd, buf, buf_len);
-        check_recv_error(name_len, args, NULL);
+        check_recv_error(name_len, args, guid);
     }
     while (!name_validation(buf, name_len))
     {
         sprintf(buf, "0Please choose a name that does not contains | or ~ character: ");
         ret = send_to_client(socketd, buf);
-        check_send_error(ret, args, NULL);
+        check_send_error(ret, args, guid);
         name_len = recv_from_client(socketd, buf, buf_len);
-        check_recv_error(name_len, args, NULL);
+        check_recv_error(name_len, args, guid);
     }
     printf("Correct name received ");
     *name = (char*)malloc(sizeof(char) * (name_len));
@@ -152,34 +108,6 @@ static void name_pickup(conn_thread_args_t* args, char** name)
     }
     strncpy(*name, buf, name_len);
     printf("-- The name is %s\n", *name);
-}
-
-int nonblocking_recv(int socket, char* buf, size_t buf_len, guid_t guid)
-{
-    int ret;
-    size_t bytes_read = 0;
-    while (bytes_read <= buf_len)
-    {
-        ret = recv(socket, buf + bytes_read, 1, MSG_DONTWAIT);
-        if (ret == -1 && errno == EAGAIN)
-        {
-            // continously check for connection request by other client
-            if (get_connection_requested_flag(users_list, guid)) return CONNECTION_REQUESTED;
-            continue;
-        }
-        // don't know if this makes sense
-        if (ret == -1 && errno == EWOULDBLOCK) return TIME_OUT_EXPIRED;
-        if (ret == 0) return CLIENT_UNEXPECTED_CLOSE;
-        if (ret < 0) return UNEXPECTED_ERROR;
-        printf("%c", buf[bytes_read]);
-        if (buf[bytes_read] == '\n') break;
-
-        // if there is no \n the message is truncated when is length is buf_len
-        if (bytes_read == buf_len) break;
-        bytes_read += ret;
-    }
-    buf[bytes_read++] = STRING_TERMINATOR;
-    return bytes_read;
 }
 
 /* ============================= */
@@ -227,11 +155,13 @@ void* client_connection_handler(void* arg)
     size_t buf_len = sizeof(buf);
     int ret;
     string_t temp, name;
-    bool_t conn_req = FALSE;
 
     // chosen target information
     guid_t chosen_guid;
     int chosen_socket;
+
+    // client representation on the server side
+    guid_t guid = new_guid();
 
     // timeval struct for recv timeout
     struct timeval tv;
@@ -240,43 +170,37 @@ void* client_connection_handler(void* arg)
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
     printf("DEBUG sending the Welcome message -- The client should see: %s\n", buf);
     ret = send(communication_socket, buf, strlen(buf), 0);
-    check_send_error(ret, args, NULL);
+    check_send_error(ret, args, guid);
     printf("DEBUG: Welcome message sent on %d socket\n", communication_socket);
 
     // set a 2 minutes timeout for the socket operations
     set_timeval(&tv, 120, 0);
     ret = setsockopt(communication_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
-    //ERROR_HELPER(ret, "Cannot set SO_RCVTIMEO option"); // TODO: change this
-    if (ret < 0) close_and_cleanup(args, "Cannot set SO_RCVTIMEO option"); // CHANGED: to check
+    if (ret < 0) close_and_cleanup(args, guid, "Cannot set SO_RCVTIMEO option");
 
     // save the name
-    name_pickup(args, &name);
+    name_pickup(args, &name, guid);
 
-    // send the generated guid to the client
-    guid_t guid = new_guid();
+    // send the generated guid to the client - append a 1 to the guid to communicate the success
     temp = serialize_guid(guid);
     snprintf(buf, buf_len, "1%s", temp);
     free(temp);
     printf("DEBUG: sending the generated guid %s\n", buf + 1);
     ret = send_to_client(communication_socket, buf);
-    check_send_error(ret, args, NULL);
+    check_send_error(ret, args, guid);
     printf("DEBUG: guid sent\n");
 
-    // sem_num = 0 --> operate on semaphore 0
-    // sem_op = -1 --> decrement the semaphore value, wait if is 0
-    struct sembuf sop = { 0 };
-    SEM_LOCK(sop, semid);
     // add the user to users_list
     add(users_list, name, guid, communication_socket);
-    // make the users_list available
-    SEM_RELEASE(sop, semid);
+
+    // a seconda di ciò che l'utente sceglie faccio cose:
+    // se l'utente richiede il refresh della lista, invio la lista
+    // se l'utente richiede di essere messo in attesa faccio una recv e mi metto in attesa
+    // se l'utente decide di voler scegliere lo rendo non disponibile e lo faccio scegliere
 
     while (TRUE)
     {
-        // serialize the users list, atomic operation
-        SEM_LOCK(sop, semid);
         temp = serialize_list(users_list);
-        SEM_RELEASE(sop, semid);
 
         // send the serialized users list to the client
         snprintf(buf, buf_len, "%s", temp);

@@ -147,7 +147,7 @@ bool_t add(list_t list, string_t name, guid_t guid, int socket)
     node->name = name;
     node->socket = socket;
     node->guid = guid;
-    node->available = TRUE;
+    node->available = FALSE;
     node->next = NULL;
     node->partner = NULL;
 
