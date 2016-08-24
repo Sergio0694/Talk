@@ -19,10 +19,11 @@
 #define BUFFER_LENGTH 1024
 
 /* MENU MACROS */
-#define REFRESH_MESSAGE 'R'
-#define REPRINT_MENU 'M'
-#define WAIT_FOR_CONNECTIONS 'W'
-#define CONNECT_WITH_ANOTHER_USER 'C'
+#define REFRESH_MESSAGE "R"
+#define REPRINT_MENU "M"
+#define WAIT_FOR_CONNECTIONS "W"
+#define CONNECT_WITH_ANOTHER_USER "C"
+#define DISCONNECT "DISCONNECT"
 
 typedef struct thread_params_s
 {
@@ -115,6 +116,7 @@ static void print_single_user(int index, string_t username)
 static void load_users_list()
 {
     char buffer[BUFFER_LENGTH];
+    SecureZeroMemory(buffer, BUFFER_LENGTH);
     printf("Waiting for the users list\n");
     recv_from_socket(socketd, buffer, BUFFER_LENGTH);
     printf("List received\n");
@@ -232,6 +234,8 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
 
 void chat(string_t username)
 {
+    printf("\n======================= CHAT =======================\n\n");
+
     // Prepare the threads structure
     chat_thread_args_t arg = { 0 };
     arg.username = username;
@@ -259,11 +263,8 @@ void chat(string_t username)
     ERROR_HELPER(join == WAIT_FAILED, "Error while joining the two threads");
 }
 
-BOOL CtrlHandler(DWORD fdwCtrlType)
+void exit_with_cleanup()
 {
-    // Skip other signals
-    if (fdwCtrlType != CTRL_C_EVENT) return FALSE;
-
     // Cleanup and close everything
     if (socketd != INVALID_SOCKET)
     {
@@ -279,12 +280,30 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
     exit(EXIT_SUCCESS);
 }
 
+void print_menu()
+{
+    printf("\n======================= MENU =======================\n\n");
+    printf("Command    -    Action\n\n");
+    printf("  W        - Wait for a connection from anoter user\n");
+    printf("  R        - Ask for an up to date users list\n");
+    printf("  C        - Choose a client to chat with\n");
+    printf("  M        - Reprint this menu\n");
+    printf("DISCONNECT - Disconnect from the server\n\n");
+}
+
+BOOL CtrlHandler(DWORD fdwCtrlType)
+{
+    // Skip other signals
+    if (fdwCtrlType != CTRL_C_EVENT) return FALSE;
+    exit_with_cleanup();
+}
+
 int main()
 {
     // aux variables
     int ret;
     char buffer[BUFFER_LENGTH];
-    SecureZeroMemory(buffer, BUFFER_LENGTH);
+    strncpy(buffer, "", BUFFER_LENGTH);
 
     // Add the Ctrl + C signal handler
     SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
@@ -292,7 +311,7 @@ int main()
     // Socket API initialization and socket creation
     initialize_socket_API();
     create_socket();
-    printf("Socket created\nTrying to establish a connection with the server\n");
+    printf("DEBUG Socket created\nTrying to establish a connection with the server\n");
 
     // Connection
     struct sockaddr_in address = get_socket_address();
@@ -309,7 +328,7 @@ int main()
     choose_name();
 
     // Print the command menu
-    print_menu(); // TODO: implement this
+    print_menu();
 
     // Main client loop
     while (TRUE)
@@ -318,35 +337,43 @@ int main()
         char* fgets_ret = fgets(buffer, BUFFER_LENGTH, stdin);
         ERROR_HELPER(fgets_ret == NULL && ferror(stdin), "Error in fgets");
         int menu_length = strlen(buffer);
-        BOOL correct = check_menu_choice(buffer, menu_length); // TODO: implement this
-        if (!correct) continue;
-
-        char menu_choice[menu_length];
-        strncpy(menu_choice, buffer, menu_length);
-        SecureZeroMemory(buffer, BUFFER_LENGTH);
+        printf("DEBUG length read %d message read %s\n", menu_length, buffer);
 
         // If menu_choice is refresh user list receive and print the users list
-        if (menu_choice[0] == REFRESH_MESSAGE)
+        if (strncmp(buffer, REFRESH_MESSAGE, strlen(REFRESH_MESSAGE)) == 0)
         {
+            printf("DEBUG sending the %s command\n", buffer);
+            send_to_socket(socketd, buffer);
             load_users_list();
             continue;
         }
 
+        // the user want to be disconnected from the server
+        if (strncmp(buffer, DISCONNECT, strlen(DISCONNECT)) == 0)
+        {
+            // send the choice to the server and cleanup
+            send_to_socket(socketd, buffer);
+            exit_with_cleanup();
+        }
+
         // If menu_choice is print the menu again print the menu
-        if (menu_choice[0] == REPRINT_MENU)
+        if (strncmp(buffer, REPRINT_MENU, strlen(REPRINT_MENU)) == 0)
         {
             print_menu();
             continue;
         }
 
         // if menu_choice is wait use a recv to wait for the server notification and start the chat
-        if (menu_choice[0] == WAIT_FOR_CONNECTIONS)
+        if (strncmp(buffer, WAIT_FOR_CONNECTIONS, strlen(WAIT_FOR_CONNECTIONS)) == 0)
         {
+            printf("DEBUG sending the %s command\n", buffer);
             // send the wait message to the server to make me available to chat
             send_to_socket(socketd, buffer);
 
-            // receive the server response - is the username of the guy who chose me to chat
+            // receive the server response - is the name of the guy who chose me to chat
             // with attached a 1 if everything it's ok
+            SecureZeroMemory(buffer, BUFFER_LENGTH);
+            printf("DEBUG receiving the chooser guid\n");
             recv_from_socket(socketd, buffer, BUFFER_LENGTH);
             if (buffer[0] == '0')
             {
@@ -354,20 +381,27 @@ int main()
                 printf("Please repeat the process or change action\n");
                 continue;
             }
+
+            // start the chat
             chat(buffer + 1);
         }
 
         // if menu_choice is to choose read from input the choice and send it to server
         // wait for server response and start the chat if it's positive
-        if (menu_choice[0] == CONNECT_WITH_ANOTHER_USER)
+        if (strncmp(buffer, CONNECT_WITH_ANOTHER_USER, strlen(CONNECT_WITH_ANOTHER_USER)) == 0)
         {
+            // send the connect message to the server to notify the choice
+            send_to_socket(socketd, buffer);
+
             // choose the user from the list and retrieve his guid
             guid_t* partner = pick_target_user();
 
             // send it to the server to check if the user is available for chat
+            printf("DEBUG sending the partner guid\n");
             send_target_guid(*partner);
 
             // receive the server response - is made by a 0 or a 1 followed by the chose user's name
+            printf("DEBUG waiting for server response\n");
             recv_from_socket(socketd, buffer, BUFFER_LENGTH);
             if (buffer[0] == '0')
             {
@@ -375,6 +409,8 @@ int main()
                 printf("Please repeat the process or change action\n");
                 continue;
             }
+
+            // start the chat
             chat(buffer + 1);
         }
     }

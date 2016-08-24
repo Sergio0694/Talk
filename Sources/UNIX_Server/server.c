@@ -17,7 +17,10 @@
 #include "server_util.h"
 #include "server.h"
 
+/* MENU MACROS */
 #define REFRESH_MESSAGE "R"
+#define WAIT_FOR_CONNECTIONS "W"
+#define CONNECT_WITH_ANOTHER_USER "C"
 #define DISCONNECT_MESSAGE "DISCONNECT"
 
 /* ===== GLOBAL VARIABLES ===== */
@@ -157,8 +160,8 @@ void* client_connection_handler(void* arg)
     string_t temp, name;
 
     // chosen target information
-    guid_t chosen_guid;
-    int chosen_socket;
+    guid_t partner_guid;
+    int partner_socket;
 
     // client representation on the server side
     guid_t guid = new_guid();
@@ -168,7 +171,7 @@ void* client_connection_handler(void* arg)
 
     // Welcome message
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
-    printf("DEBUG sending the Welcome message -- The client should see: %s\n", buf);
+    printf("DEBUG sending the Welcome message\n");
     ret = send(communication_socket, buf, strlen(buf), 0);
     check_send_error(ret, args, guid);
     printf("DEBUG: Welcome message sent on %d socket\n", communication_socket);
@@ -182,153 +185,131 @@ void* client_connection_handler(void* arg)
     name_pickup(args, &name, guid);
 
     // send the generated guid to the client - append a 1 to the guid to communicate the success
+    printf("DEBUG serialize the generated guid\n");
     temp = serialize_guid(guid);
     snprintf(buf, buf_len, "1%s", temp);
-    free(temp);
     printf("DEBUG: sending the generated guid %s\n", buf + 1);
     ret = send_to_client(communication_socket, buf);
     check_send_error(ret, args, guid);
     printf("DEBUG: guid sent\n");
 
-    // add the user to users_list
-    add(users_list, name, guid, communication_socket);
+    // cleanup
+    strncpy(buf, "", buf_len);
+    free(temp);
 
-    // a seconda di ciò che l'utente sceglie faccio cose:
-    // se l'utente richiede il refresh della lista, invio la lista
-    // se l'utente richiede di essere messo in attesa faccio una recv e mi metto in attesa
-    // se l'utente decide di voler scegliere lo rendo non disponibile e lo faccio scegliere
+    // add the user to users_list
+    printf("DEBUG adding the user to the users_list\n");
+    add(users_list, name, guid, communication_socket);
 
     while (TRUE)
     {
-        temp = serialize_list(users_list);
+        // receive the command from the client
+        printf("DEBUG: Waiting for new commands from the user\n");
+        ret = recv_from_client(communication_socket, buf, buf_len);
+        check_recv_error(ret, args, guid);
+        printf("DEBUG: Command %s received\n", buf);
 
-        // send the serialized users list to the client
-        snprintf(buf, buf_len, "%s", temp);
-        free(temp);
-        printf("Sending the users list..\n");
-        ret = send_to_client(communication_socket, buf);
-        check_send_error(ret, args, &guid);
-        printf("Users list sent\n");
-
-        // wait for the client connection choice
-        ret = nonblocking_recv(communication_socket, buf, buf_len, guid);
-        check_recv_error(ret, args, &guid);
-
-        // if ret == CONNECTION_REQUESTED you're choose from another client
-        if (ret == CONNECTION_REQUESTED)
-        {
-            printf("DEBUG: I'm the chosen\n");
-            // get the partner's name and his socket
-            SEM_LOCK(sop, semid);
-            chosen_guid = get_partner(users_list, guid);
-            chosen_socket = get_socket(users_list, chosen_guid);
-            char* ser_temp = serialize_guid(chosen_guid);
-            printf("DEBUG partner guid: %s\n", ser_temp);
-            printf("DEBUG my_socket %d partner socket: %d\n", communication_socket, chosen_socket);
-            SEM_RELEASE(sop, semid);
-            conn_req = TRUE;
-        }
-
+        // the user command is to resend the user list
         if (strncmp(buf, REFRESH_MESSAGE, strlen(REFRESH_MESSAGE)) == 0)
         {
             printf("DEBUG received a refresh request\nDEBUG sending the refreshed list\n");
+            temp = serialize_list(users_list);
+
+            // send the serialized users list to the client
+            snprintf(buf, buf_len, "%s", temp);
+            free(temp);
+            printf("Sending the users list..\n");
+            ret = send_to_client(communication_socket, buf);
+            check_send_error(ret, args, guid);
+            printf("Users list sent\n");
             continue;
         }
 
         // if the message received is DISCONNECT the client will be disconnected from the server
         if (strncmp(buf, DISCONNECT_MESSAGE, strlen(DISCONNECT_MESSAGE)) == 0)
         {
-            // remove the client from the users list
-            SEM_LOCK(sop, semid);
-            remove_guid(users_list, guid);
-            SEM_RELEASE(sop, semid);
-
-            close_and_cleanup(args, "The client want to be disconnected");
+            printf("DEBUG: received a disconnect message\n");
+            close_and_cleanup(args, guid, "The client want to be disconnected");
         }
 
-        // if !conn_req the client has performed a choose
-        if (!conn_req)
+        if (strncmp(buf, WAIT_FOR_CONNECTIONS, strlen(WAIT_FOR_CONNECTIONS)) == 0)
         {
-            // take the guid of the chosen client and his connection socket
-            printf("DEBUG: I'm the one who choose\n");
-            chosen_guid = deserialize_guid(buf);
+            // Make the user available for chat
+            printf("DEBUG: received a wait message, setting the user as available\n");
+            set_available_flag(users_list, guid, TRUE);
+            struct sembuf sop = { 0 };
+            sop.sem_num = 1;
             SEM_LOCK(sop, semid);
-            chosen_socket = get_socket(users_list, chosen_guid);
-            SEM_RELEASE(sop, semid);
-            // DEBUG? char* ser_temp = serialize_guid(chosen_guid);
-            printf("DEBUG partner guid: %s\n", buf);
-            printf("DEBUG my_socket %d partner socket: %d\n", communication_socket, chosen_socket);
+            partner_guid = get_partner(users_list, guid);
+            partner_socket = get_socket(users_list, partner_guid);
         }
 
-        if (!conn_req)
+        if (strncmp(buf, CONNECT_WITH_ANOTHER_USER, strlen(CONNECT_WITH_ANOTHER_USER)) == 0)
         {
-            // lock the binary semaphore
-            SEM_LOCK(sop, semid);
-            printf("DEBUG check for the availability of the user\n");
-            // check for the availability of the desired user
-            if (get_available_flag(users_list, chosen_guid))
+            // Receive the chosen guid from the client
+            printf("DEBUG message connect received, waiting for the chosen guid to be received\n");
+            ret = recv_from_client(communication_socket, buf, buf_len);
+            check_recv_error(ret, args, guid);
+            printf("DEBUG: guid received - %s\n", buf);
+
+
+            // save the partner guid and check for his availability
+            partner_guid = deserialize_guid(buf);
+            printf("DEBUG guid deserialized check for availability\n");
+            if (!get_available_flag(users_list, partner_guid))
             {
-                // set the connection requested flag for the chosen client
-                set_connection_flag(users_list, chosen_guid, TRUE);
-                printf("DEBUG connection flag set\n");
-
-                // set the available flag for the two users to false
-                set_available_flag(users_list, guid, FALSE);
-                set_available_flag(users_list, chosen_guid, FALSE);
-                printf("DEBUG available flags set\n");
-
-                // set the partner for both users
-                set_partner(users_list, guid, chosen_guid);
-                set_partner(users_list, chosen_guid, guid);
-                printf("DEBUG partners set\n");
-            }
-            else
-            {
-                // make the users_list available
-                SEM_RELEASE(sop, semid);
-
-                // send a 0 to inform that the chosen user is not available
-                buf[0] = '0';
-                ret = send(communication_socket, (void*)&buf[0], 1, 0);
-                check_send_error(ret, args, &guid);
-
-                // the chosen user is not available for chat, reserialize the users_list updated
+                strncpy(buf, "0", 2);
+                ret = send(communication_socket, buf, strlen(buf), 0);
+                check_send_error(ret, args, guid);
                 continue;
             }
 
-            // make the users_list available
+            // Retrieve the partner socket and save the partner info in the users list and the user
+            // info in the partner's position inside the users list
+            partner_socket = get_socket(users_list, partner_guid);
+            if (!set_partner(users_list, guid, partner_guid))
+            {
+                close_and_cleanup(args, guid, "Cannot save the chat partner's info in the list");
+            }
+            if (!set_partner(users_list, partner_guid, guid))
+            {
+                close_and_cleanup(args, guid, "Cannot save the chat partner's info in the list");
+            }
+
+            // partner setted up
+            struct sembuf sop = { 0 };
+            sop.sem_num = 1;
             SEM_RELEASE(sop, semid);
+
+            // send the user's name to the chosen user
+            snprintf(buf, buf_len, "1%s", name);
+            ret = send_to_client(partner_socket, buf);
+            check_send_error(ret, args, guid);
+
+            // send the partner name to the user
+            printf("DEBUG: retrieving and sending the partner name\n");
+            temp = get_name(users_list, partner_guid);
+            printf("DEBUG: chosen partner info guid = %s, socket = %d, name = %s\n",
+                    buf, partner_socket, temp);
+            memset(buf, 0, buf_len);
+            snprintf(buf, buf_len, "1%s", temp);
+            ret = send_to_client(communication_socket, buf);
+            check_send_error(ret, args, guid);
+            printf("DEBUG partner name '%s' sent, time to start the chat session\n", buf);
+
+            free(temp);
+            memset(buf, 0, buf_len);
         }
 
-        SEM_LOCK(sop, semid);
-        temp = get_name(users_list, chosen_guid);
-        printf("DEBUG pick the partner's name: %s\n", temp);
-        SEM_RELEASE(sop, semid);
-
-        snprintf(buf, buf_len, "1%s", temp);
-
-        int ret_temp = send_to_client(communication_socket, buf);
-        check_send_error(ret_temp, args, &guid);
-        //free(temp);
-        printf("DEBUG name sent\nStarting a chat session..\n");
-
         // start the chat
-        ret = chat_handler(communication_socket, chosen_socket);
+        ret = chat_handler(communication_socket, partner_socket);
         if (ret == TIME_OUT_EXPIRED)
         {
-            fprintf(stderr, "Removing guid\n");
-            /*SEM_LOCK(sop, semid);
-            remove_guid(users_list, guid);
-            SEM_RELEASE(sop, semid);*/
-            close_and_cleanup(args, "Chat timeout expired");
+            close_and_cleanup(args, guid, "Chat timeout expired");
         }
         if (ret < 0)
         {
-            fprintf(stderr, "Removing guid\n");
-            /*SEM_LOCK(sop, semid);
-            remove_guid(users_list, guid);
-            SEM_RELEASE(sop, semid);*/
-            close_and_cleanup(args, "Unexpected error occurs");
+            close_and_cleanup(args, guid, "Unexpected error occurs");
         }
 
     } // end of while
@@ -375,13 +356,16 @@ int main()
     /* ==== semaphore creation and initialization ==== */
 
     // create the semaphore
-    semid = semget(IPC_PRIVATE, /* semnum = */ 1, IPC_CREAT | 0660);
+    semid = semget(IPC_PRIVATE, /* semnum = */ 2, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
     // initialize the semaphore to 1 -- is used to synchronize the access to the users list
     union semun arg;
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
+    ERROR_HELPER(ret, "Cannot initialize the semaphore");
+    arg.val = 0;
+    ret = semctl(semid, 1, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */
