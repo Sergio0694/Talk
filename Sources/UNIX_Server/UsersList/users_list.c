@@ -70,7 +70,7 @@ list_t create_list(int semid)
     return outList;
 }
 
-// DestroyList TODO: test the socket close
+// DestroyList
 void destroy_list(list_t* list)
 {
     int ret;
@@ -91,8 +91,8 @@ void destroy_list(list_t* list)
         free(temp->name);
         printf("DEBUG cleaning the guid\n");
         free(temp->guid);
-        printf("DEBUG cleaning the partner guid\n");
-        free(temp->partner);
+        //printf("DEBUG cleaning the partner guid\n");
+        //free(temp->partner);
         while (TRUE)
         {
             printf("DEBUG closing the socket\n");
@@ -196,9 +196,12 @@ bool_t remove_guid(list_t list, guid_t guid)
         if (guid_equals(pointer->guid, guid))
         {
             // Deallocate the content of the item
+            printf("DEBUG guid found in the users list, start freeing\n");
             free(pointer->name);
+            printf("DEBUG name freed\n");
             free(pointer->guid);
-            free(pointer->partner);
+            printf("DEBUG guid freed\n");
+            //free(pointer->partner);
             while (TRUE)
             {
                 int ret = close(pointer->socket);
@@ -210,14 +213,21 @@ bool_t remove_guid(list_t list, guid_t guid)
                 }
                 else break;
             }
+            printf("DEBUG socket closed\n");
 
             // Adjust the references
             if (pointer->next == NULL) list->tail = NULL;
-            else pointer->previous->next = pointer->next;
+            else
+            {
+                if (pointer->previous != NULL) (pointer->previous)->next = pointer->next;
+                else (pointer->next)->previous = NULL;
+            }
+            printf("DEBUG references adjusted\n");
 
             // Update the list length and deallocate the removed item
             list->length = list->length - 1;
             free(pointer);
+            printf("DEBUG node itself freed\n");
             SEM_RELEASE(sop, semid);
             return TRUE;
         }
