@@ -101,6 +101,7 @@ void destroy_list(list_t* list)
             else if (ret == -1)
             {
                 SEM_RELEASE(sop, (*list)->semid);
+                fprintf(stderr, "Error closing the semaphore%s\n", strerror(errno));
                 exit(EXIT_FAILURE);
             }
             else break;
@@ -123,7 +124,7 @@ int get_list_length(list_t list)
     return l;
 }
 
-// Add -- Atomic operation
+// Add
 bool_t add(list_t list, string_t name, guid_t guid, int socket)
 {
     if (list == NULL) return FALSE;

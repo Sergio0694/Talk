@@ -30,7 +30,7 @@ typedef struct thread_args_s
 } conn_thread_args_t;
 
 list_t users_list = NULL;
-int semid;
+int semid, server_socket;
 
 // used in calls to semctl()
 union semun
@@ -51,8 +51,10 @@ static void close_and_cleanup(conn_thread_args_t* args, guid_t guid, char* msg)
 {
     int socketd = args->sock_desc;
     remove_guid(users_list, guid);
+    printf("DEBUG guid removed\n");
     fprintf(stderr, "%s\n", msg);
     free(args);
+    printf("DEBUG args freed\n");
     pthread_exit(NULL);
 }
 
@@ -132,8 +134,6 @@ int chat_handler(int src, int dst)
         ret = recv_from_client(src, temp, buf_len);
         if (ret < 0) return ret;
 
-        if (strncmp(temp, "QUIT", 4) == 0) break;
-
         // add to the received message a 0 to represent the source and
         // a 1 to represent the partner
         snprintf(buf, buf_len, "0%s", temp);
@@ -142,6 +142,8 @@ int chat_handler(int src, int dst)
         snprintf(buf, buf_len, "1%s", temp);
         ret = send_to_client(dst, buf);
         if (ret < 0) return ret;
+
+        if (strncmp(temp, "QUIT", 4) == 0) break;
     }
     return 0;
 }
@@ -237,6 +239,8 @@ void* client_connection_handler(void* arg)
             // Make the user available for chat
             printf("DEBUG: received a wait message, setting the user as available\n");
             set_available_flag(users_list, guid, TRUE);
+
+            // wait for the partner to be setted up by the chooser
             struct sembuf sop = { 0 };
             sop.sem_num = 1;
             SEM_LOCK(sop, semid);
@@ -326,6 +330,14 @@ void signal_handler(int signum)
     printf("DEBUG Removing the semaphore\n");
     int ret = semctl(semid, 0, IPC_RMID, NULL);
     ERROR_HELPER(ret, "Error while removing the semaphore");
+    printf("DEBUG closing the server socket\n");
+    while (TRUE)
+    {
+        ret = close(temp->socket);
+        if (ret == -1 && errno == EINTR) continue;
+        else if (ret == -1) exit(EXIT_FAILURE);
+        else break;
+    }
     printf("Goodbye!\n");
     exit(EXIT_SUCCESS);
 }
@@ -351,7 +363,7 @@ int main()
 {
     // aux var
     int ret;
-    int socket_desc, client_desc;
+    int client_desc;
 
     /* ==== semaphore creation and initialization ==== */
 
@@ -372,9 +384,9 @@ int main()
 
     // server setup
     users_list = create_list(semid);
-    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
-    ERROR_HELPER(socket_desc, "Cannot open server socket");
-    server_intial_setup(socket_desc);
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    ERROR_HELPER(server_socket, "Cannot open server socket");
+    server_intial_setup(server_socket);
 
     // preventing the generation of SIGPIPE -- an EPIPE will be generated instead
     add_signal(SIGPIPE, SIG_IGN);
@@ -400,7 +412,7 @@ int main()
         printf("Waiting for connections ...\n");
 
         // accept incoming connection - don't care about the client address
-        client_desc = accept(socket_desc, NULL, NULL);
+        client_desc = accept(server_socket, NULL, NULL);
         if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
 

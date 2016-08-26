@@ -36,6 +36,7 @@ typedef struct thread_params_s
 typedef struct chat_thread_args_s
 {
     string_t username;
+    HANDLE other;
 } chat_thread_args_t;
 
 /* ======== GLOBALS ======== */
@@ -43,6 +44,8 @@ guid_t client_guid;
 client_list_t client_users_list = NULL;
 SOCKET socketd = INVALID_SOCKET;
 int chat_window_port;
+HANDLE semaphore;
+char quit[5] = "";
 /* ========================= */
 
 // Creates a socket
@@ -202,6 +205,16 @@ DWORD WINAPI chat_handler_in(LPVOID arg)
         SecureZeroMemory(buffer, BUFFER_LENGTH);
         recv_from_socket(socketd, buffer, BUFFER_LENGTH);
 
+        if (strncmp(buffer + 1, "QUIT", 4) == 0)
+        {
+            DWORD ret = WaitForSingleObject(semaphore, INFINITE);
+            ERROR_HELPER(ret == WAIT_FAILED, "Error while waiting");
+            if (strncmp(quit, "", 1) == 0) strncpy(quit, "QUIT", 4);
+            BOOL success = ReleaseSemaphore(semaphore, 1, NULL);
+            ERROR_HELPER(!success, "Error while releasing the semaphore");
+            break;
+        }
+
         // Calculate the username to display
         char tmp[2] = { buffer[0], '\0' };
         int userIndex = atoi(tmp);
@@ -222,19 +235,37 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
 {
     while (TRUE)
     {
+        // if a quit message is received, exit the chat
+        DWORD ret = WaitForSingleObject(semaphore, INFINITE);
+        ERROR_HELPER(ret == WAIT_FAILED, "Error while waiting");
+        if (strncmp(quit, "QUIT", 4) == 0) break;
+        BOOL success = ReleaseSemaphore(semaphore, 1, NULL);
+        ERROR_HELPER(!success, "Error while releasing the semaphore");
+
         // Send the new message if necessary
         char message[BUFFER_LENGTH];
+        strncpy(message, "", BUFFER_LENGTH);
         char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
         ERROR_HELPER(gets_ret == NULL && ferror(stdin) &&
             GetLastError() != ERROR_OPERATION_ABORTED, "Error in fgets");
-        //if (gets_ret == NULL) continue;
+        if (message[0] == '\n') continue;
         send_to_socket(socketd, message);
+
+        // if the message is quit the client want to exit the chat
+        if (strncmp(message, "QUIT", 4) == 0) return TRUE;
     }
+    BOOL success = ReleaseSemaphore(semaphore, 1, NULL);
+    ERROR_HELPER(!success, "Error while releasing the semaphore");
+    return TRUE;
 }
 
 void chat(string_t username)
 {
     printf("\n======================= CHAT =======================\n\n");
+
+    // Semaphore to synchronize the access to the quit buffer
+    semaphore = CreateSemaphore(NULL, /* initialCount = */ 1, /* maxCount = */ 1, NULL);
+    ERROR_HELPER(semaphore == NULL, "Error in semaphore creation");
 
     // Prepare the threads structure
     chat_thread_args_t arg = { 0 };
@@ -254,13 +285,15 @@ void chat(string_t username)
         NULL,       // Default security attributes
         0,          // Default stack size
         (LPTHREAD_START_ROUTINE)chat_handler_out, // Handler function
-        (LPVOID)&arg, // Handler arguments
+        NULL, // Handler arguments
         0,          // Default creation flags
         NULL); // Ignore the thread identifier
+    ERROR_HELPER(threads[1] == NULL, "Error creating the second picker thread");
 
-    // TODO: close the two threads when necessary
     DWORD join = WaitForMultipleObjects(2, threads, TRUE, INFINITE);
     ERROR_HELPER(join == WAIT_FAILED, "Error while joining the two threads");
+
+    if (!CloseHandle(semaphore)) ERROR_HELPER(TRUE, "Error while closing the semaphore");
 }
 
 void exit_with_cleanup()
@@ -334,6 +367,7 @@ int main()
     while (TRUE)
     {
         // Read from the standard input the user choice
+        printf(">> ");
         char* fgets_ret = fgets(buffer, BUFFER_LENGTH, stdin);
         ERROR_HELPER(fgets_ret == NULL && ferror(stdin), "Error in fgets");
         int menu_length = strlen(buffer);
