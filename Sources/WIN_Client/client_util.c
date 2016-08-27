@@ -44,6 +44,9 @@ int recv_from_socket(SOCKET socket, char* buf, size_t buf_len)
     // Counter of the read bytes
     int bytes_read = 0;
 
+    // Clear the buffer
+    strncpy(buf, "", buf_len);
+
     // Messages longer than buf_len will be truncated
     while (bytes_read <= buf_len)
     {
@@ -74,4 +77,14 @@ void initialize_socket_API()
     ERROR_HELPER(startup_ret == WSAVERNOTSUPPORTED,
         "The 2.2 SOCKET APIs are not supported on your system");
     ERROR_HELPER(startup_ret != 0, "There was an error during the SOCKET API initialization");
+}
+
+void checked_fgets(char* buffer, size_t buffer_length)
+{
+    int c;
+    char* fgets_ret;
+    strncpy(buffer, "", buffer_length);
+    //while ((c = getchar()) != '\n' && c != EOF);
+    fgets_ret = fgets(buffer, buffer_length, stdin);
+    ERROR_HELPER(fgets_ret == NULL && ferror(stdin), "Error in fgets");
 }

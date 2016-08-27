@@ -52,4 +52,6 @@ int recv_from_socket(SOCKET socket, char* buf, size_t buf_len);
 *    Initializes the WINAPI for the sockets */
 void initialize_socket_API();
 
+void checked_fgets(char* buffer, size_t buffer_length);
+
 #endif

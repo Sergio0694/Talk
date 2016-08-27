@@ -24,7 +24,7 @@ typedef struct clientListBase* client_list_t;
 *  Parameters:
 *    list ---> The source list
 *    index ---> The index of the target guid to retrieve */
-guid_t* try_get_guid(const client_list_t list, const int index);
+guid_t try_get_guid(const client_list_t list, const int index);
 
 /* =====================================================================
 *  DestroyUserList

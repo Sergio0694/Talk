@@ -73,8 +73,6 @@ static struct sockaddr_in get_socket_address()
 // Logins into the server with a new username
 static void choose_name()
 {
-    char* gets_ret;
-
     // Allocate the buffers to use
     char buffer[BUFFER_LENGTH], response[BUFFER_LENGTH];
 
@@ -82,8 +80,7 @@ static void choose_name()
     while (TRUE)
     {
         // Choose a name and ask the server if it's valid
-        gets_ret = fgets(buffer, BUFFER_LENGTH, stdin);
-        ERROR_HELPER(gets_ret == NULL && ferror(stdin), "fgets fails");
+        checked_fgets(buffer, BUFFER_LENGTH);
 
         printf("The name is %s\nTrying to send it to the server\n", buffer);
 
@@ -119,18 +116,17 @@ static void print_single_user(int index, string_t username)
 static void load_users_list()
 {
     char buffer[BUFFER_LENGTH];
-    SecureZeroMemory(buffer, BUFFER_LENGTH);
     printf("Waiting for the users list\n");
     recv_from_socket(socketd, buffer, BUFFER_LENGTH);
     printf("List received\n");
-    printf("DEBUG: %s\n", buffer);
+    printf("DEBUG: list is %s\n", buffer);
     client_users_list = deserialize_client_list(buffer, client_guid);
 
     // Print the users list
     print_list(client_users_list, print_single_user);
 }
 
-guid_t* pick_target_user()
+guid_t pick_target_user()
 {
     printf("Pick a user to connect to: ");
 
@@ -140,8 +136,7 @@ guid_t* pick_target_user()
         // Read an integer from stdin require conversion
         const int maxIntCharLen = 2;
         char buf[maxIntCharLen];
-        char* res = fgets(buf, maxIntCharLen, stdin);
-        ERROR_HELPER(res == NULL && ferror(stdin), "Error reading from the input buffer");
+        checked_fgets(buf, maxIntCharLen);
 
         // Check if what I read from stdin was an actual digit
         if (!isdigit(buf[0]))
@@ -154,9 +149,10 @@ guid_t* pick_target_user()
 
         // The target value has been converted, check the result
         printf("DEBUG trying get guid\n");
-        guid_t* guid = try_get_guid(client_users_list, target);
-        if (guid == NULL) printf("The input index isn't valid\n");
-        else return guid;
+        guid_t guid = try_get_guid(client_users_list, target);
+        if (guid == NULL)
+            printf("The input index isn't valid or you never refresh the users list\n");
+        return guid;
     }
 
 }
@@ -202,7 +198,6 @@ DWORD WINAPI chat_handler_in(LPVOID arg)
     {
         // Receive the message from the server
         char buffer[BUFFER_LENGTH];
-        SecureZeroMemory(buffer, BUFFER_LENGTH);
         recv_from_socket(socketd, buffer, BUFFER_LENGTH);
 
         if (strncmp(buffer + 1, "QUIT", 4) == 0)
@@ -221,7 +216,7 @@ DWORD WINAPI chat_handler_in(LPVOID arg)
 
         // Display the message in the target console
         char message[BUFFER_LENGTH];
-        SecureZeroMemory(message, BUFFER_LENGTH);
+        strncpy(message, "", BUFFER_LENGTH);
         char* temp_name = userIndex == 0 ? "Me" : username;
         snprintf(message, BUFFER_LENGTH, "%d[%s]%s", userIndex, temp_name, buffer + 1);
         int len = strlen(message);
@@ -238,16 +233,20 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
         // if a quit message is received, exit the chat
         DWORD ret = WaitForSingleObject(semaphore, INFINITE);
         ERROR_HELPER(ret == WAIT_FAILED, "Error while waiting");
-        if (strncmp(quit, "QUIT", 4) == 0) break;
+        printf("DEBUG: Check for QUIT message\n");
+        if (strncmp(quit, "QUIT", 4) == 0)
+        {
+            printf("DEBUG: received a QUIT message\n");
+            char quit_to_send[5] = { 'Q', 'U', 'I', 'T', '\n' };
+            send_to_socket(socketd, quit_to_send);
+            break;
+        }
         BOOL success = ReleaseSemaphore(semaphore, 1, NULL);
         ERROR_HELPER(!success, "Error while releasing the semaphore");
 
         // Send the new message if necessary
         char message[BUFFER_LENGTH];
-        strncpy(message, "", BUFFER_LENGTH);
-        char* gets_ret = fgets(message, BUFFER_LENGTH, stdin);
-        ERROR_HELPER(gets_ret == NULL && ferror(stdin) &&
-            GetLastError() != ERROR_OPERATION_ABORTED, "Error in fgets");
+        checked_fgets(message, BUFFER_LENGTH);
         if (message[0] == '\n') continue;
         send_to_socket(socketd, message);
 
@@ -266,6 +265,8 @@ void chat(string_t username)
     // Semaphore to synchronize the access to the quit buffer
     semaphore = CreateSemaphore(NULL, /* initialCount = */ 1, /* maxCount = */ 1, NULL);
     ERROR_HELPER(semaphore == NULL, "Error in semaphore creation");
+
+    strncpy(quit, "", 5); // clear possible previous settings
 
     // Prepare the threads structure
     chat_thread_args_t arg = { 0 };
@@ -292,6 +293,7 @@ void chat(string_t username)
 
     DWORD join = WaitForMultipleObjects(2, threads, TRUE, INFINITE);
     ERROR_HELPER(join == WAIT_FAILED, "Error while joining the two threads");
+    printf("DEBUG: received a QUIT, exited from the chat threads\n");
 
     if (!CloseHandle(semaphore)) ERROR_HELPER(TRUE, "Error while closing the semaphore");
 }
@@ -336,7 +338,6 @@ int main()
     // aux variables
     int ret;
     char buffer[BUFFER_LENGTH];
-    strncpy(buffer, "", BUFFER_LENGTH);
 
     // Add the Ctrl + C signal handler
     SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
@@ -367,9 +368,9 @@ int main()
     while (TRUE)
     {
         // Read from the standard input the user choice
+        printf("DEBUG: User commands\n");
         printf(">> ");
-        char* fgets_ret = fgets(buffer, BUFFER_LENGTH, stdin);
-        ERROR_HELPER(fgets_ret == NULL && ferror(stdin), "Error in fgets");
+        checked_fgets(buffer, BUFFER_LENGTH);
         int menu_length = strlen(buffer);
         printf("DEBUG length read %d message read %s\n", menu_length, buffer);
 
@@ -406,7 +407,6 @@ int main()
 
             // receive the server response - is the name of the guy who chose me to chat
             // with attached a 1 if everything it's ok
-            SecureZeroMemory(buffer, BUFFER_LENGTH);
             printf("DEBUG receiving the chooser guid\n");
             recv_from_socket(socketd, buffer, BUFFER_LENGTH);
             if (buffer[0] == '0')
@@ -424,15 +424,16 @@ int main()
         // wait for server response and start the chat if it's positive
         if (strncmp(buffer, CONNECT_WITH_ANOTHER_USER, strlen(CONNECT_WITH_ANOTHER_USER)) == 0)
         {
+            // choose the user from the list and retrieve his guid
+            guid_t partner = pick_target_user();
+            if (partner == NULL) continue;
+
             // send the connect message to the server to notify the choice
             send_to_socket(socketd, buffer);
 
-            // choose the user from the list and retrieve his guid
-            guid_t* partner = pick_target_user();
-
             // send it to the server to check if the user is available for chat
             printf("DEBUG sending the partner guid\n");
-            send_target_guid(*partner);
+            send_target_guid(partner);
 
             // receive the server response - is made by a 0 or a 1 followed by the chose user's name
             printf("DEBUG waiting for server response\n");
