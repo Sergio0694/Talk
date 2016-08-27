@@ -29,8 +29,9 @@ typedef struct thread_args_s
     int sock_desc;;
 } conn_thread_args_t;
 
-list_t users_list = NULL;
+list_t users_list;
 int semid, server_socket;
+bool_t quit_received;
 
 // used in calls to semctl()
 union semun
@@ -50,9 +51,9 @@ union semun
 static void close_and_cleanup(conn_thread_args_t* args, guid_t guid, char* msg)
 {
     int socketd = args->sock_desc;
+    fprintf(stderr, "%s\n", msg);
     remove_guid(users_list, guid);
     printf("DEBUG guid removed\n");
-    fprintf(stderr, "%s\n", msg);
     free(args);
     printf("DEBUG args freed\n");
     pthread_exit(NULL);
@@ -129,21 +130,36 @@ int chat_handler(int src, int dst)
     struct timeval tv;
     set_timeval(&tv, 120, 0);
 
+    struct sembuf sop = { 0 };
+    sop.sem_num = 1;
+
     while (TRUE)
     {
         ret = recv_from_client(src, temp, buf_len);
         if (ret < 0) return ret;
 
-        // add to the received message a 0 to represent the source and
-        // a 1 to represent the partner
-        snprintf(buf, buf_len, "0%s", temp);
-        ret = send_to_client(src, buf);
-        if (ret < 0) return ret;
-        snprintf(buf, buf_len, "1%s", temp);
-        ret = send_to_client(dst, buf);
-        if (ret < 0) return ret;
+        SEM_LOCK(sop, semid);
+        if (!quit_received)
+        {
+            SEM_RELEASE(sop, semid);
+            // add to the received message a 0 to represent the source and
+            // a 1 to represent the partner
+            snprintf(buf, buf_len, "0%s", temp);
+            ret = send_to_client(src, buf);
+            if (ret < 0) return ret;
+            snprintf(buf, buf_len, "1%s", temp);
+            ret = send_to_client(dst, buf);
+            if (ret < 0) return ret;
+        }
+        SEM_RELEASE(sop, semid);
 
-        if (strncmp(temp, "QUIT", 4) == 0) break;
+        if (strncmp(temp, "QUIT", 4) == 0)
+        {
+            SEM_LOCK(sop, semid);
+            quit_received = TRUE;
+            SEM_RELEASE(sop, semid);
+            break;
+        }
     }
     return 0;
 }
@@ -196,12 +212,12 @@ void* client_connection_handler(void* arg)
     printf("DEBUG: guid sent\n");
 
     // cleanup
-    strncpy(buf, "", buf_len);
     free(temp);
 
     // add the user to users_list
     printf("DEBUG adding the user to the users_list\n");
-    add(users_list, name, guid, communication_socket);
+    bool_t added = add(users_list, name, guid, communication_socket);
+    if (!added) close_and_cleanup(args, guid, "Cannot add the user to the users list");
 
     while (TRUE)
     {
@@ -216,9 +232,10 @@ void* client_connection_handler(void* arg)
         {
             printf("DEBUG received a refresh request\nDEBUG sending the refreshed list\n");
             temp = serialize_list(users_list);
+            printf("DEBUG serialized list is %s\n", temp);
 
             // send the serialized users list to the client
-            snprintf(buf, buf_len, "%s", temp);
+            strncpy(buf, temp, buf_len);
             free(temp);
             printf("Sending the users list..\n");
             ret = send_to_client(communication_socket, buf);
@@ -242,7 +259,7 @@ void* client_connection_handler(void* arg)
 
             // wait for the partner to be setted up by the chooser
             struct sembuf sop = { 0 };
-            sop.sem_num = 1;
+            sop.sem_num = 2;
             SEM_LOCK(sop, semid);
             partner_guid = get_partner(users_list, guid);
             partner_socket = get_socket(users_list, partner_guid);
@@ -282,39 +299,45 @@ void* client_connection_handler(void* arg)
 
             // partner setted up
             struct sembuf sop = { 0 };
-            sop.sem_num = 1;
+            sop.sem_num = 2;
             SEM_RELEASE(sop, semid);
 
             // send the user's name to the chosen user
+            strncpy(buf, "", buf_len);
             snprintf(buf, buf_len, "1%s", name);
             ret = send_to_client(partner_socket, buf);
             check_send_error(ret, args, guid);
 
-            // send the partner name to the user
+            // send the partner's name to the user
             printf("DEBUG: retrieving and sending the partner name\n");
             temp = get_name(users_list, partner_guid);
-            printf("DEBUG: chosen partner info guid = %s, socket = %d, name = %s\n",
-                    buf, partner_socket, temp);
-            memset(buf, 0, buf_len);
+            printf("DEBUG: chosen partner info socket = %d, name = %s\n",
+                    partner_socket, temp);
+            strncpy(buf, "", buf_len);
             snprintf(buf, buf_len, "1%s", temp);
             ret = send_to_client(communication_socket, buf);
             check_send_error(ret, args, guid);
             printf("DEBUG partner name '%s' sent, time to start the chat session\n", buf);
 
             free(temp);
-            memset(buf, 0, buf_len);
         }
 
         // start the chat
+        quit_received = FALSE;
         ret = chat_handler(communication_socket, partner_socket);
         if (ret == TIME_OUT_EXPIRED)
         {
             close_and_cleanup(args, guid, "Chat timeout expired");
         }
-        if (ret < 0)
+        /*if (ret < 0)
         {
             close_and_cleanup(args, guid, "Unexpected error occurs");
-        }
+        }*/
+
+        // If a quit message is received the client is no longer available for chatting
+        printf("DEBUG QUIT message received, set the user as no available\n");
+        set_available_flag(users_list, guid, FALSE);
+        set_available_flag(users_list, partner_guid, FALSE);
 
     } // end of while
 }
@@ -322,18 +345,15 @@ void* client_connection_handler(void* arg)
 // Handler for SIGINT and SIGHUP
 void signal_handler(int signum)
 {
-    if (users_list != NULL)
-    {
-        printf("\nDEBUG Signal received, cleaning the users list\n");
-        destroy_list(&users_list);
-    }
+    printf("\nDEBUG Signal received, cleaning the users list\n");
+    destroy_list(users_list);
     printf("DEBUG Removing the semaphore\n");
     int ret = semctl(semid, 0, IPC_RMID, NULL);
     ERROR_HELPER(ret, "Error while removing the semaphore");
     printf("DEBUG closing the server socket\n");
     while (TRUE)
     {
-        ret = close(temp->socket);
+        ret = close(server_socket);
         if (ret == -1 && errno == EINTR) continue;
         else if (ret == -1) exit(EXIT_FAILURE);
         else break;
@@ -367,17 +387,22 @@ int main()
 
     /* ==== semaphore creation and initialization ==== */
 
-    // create the semaphore
-    semid = semget(IPC_PRIVATE, /* semnum = */ 2, IPC_CREAT | 0660);
+    // create the semaphore's set
+    semid = semget(IPC_PRIVATE, /* semnum = */ 3, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
-    // initialize the semaphore to 1 -- is used to synchronize the access to the users list
+    // initialize the semaphore 0 to 1 -- is used to synchronize the access to the users list
     union semun arg;
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
-    arg.val = 0;
+    // initialize the semaphore 1 to 1 -- is used for the access to the global "quit_received"
+    arg.val = 1;
     ret = semctl(semid, 1, SETVAL, arg);
+    ERROR_HELPER(ret, "Cannot initialize the semaphore");
+    // initialize the semaphore 2 to 0 -- is used to synchronize the partner's setting
+    arg.val = 0;
+    ret = semctl(semid, 2, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */

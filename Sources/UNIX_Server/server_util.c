@@ -32,6 +32,7 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
 {
     int ret;
     size_t bytes_read = 0;
+    strncpy(buf, "", buf_len);
 
     // messages longer than buf_len will be truncated
     while (bytes_read <= buf_len)
