@@ -8,6 +8,8 @@
 #include "../sem_util.h"
 #include "users_list.h"
 
+#define EMPTY TRUE
+
 // Semaphore operation
 struct sembuf sop = { 0 };
 
@@ -18,106 +20,108 @@ struct sembuf sop = { 0 };
 // Single list node
 struct listElem
 {
-    string_t name;
+    char* name;
     guid_t guid;
     guid_t partner;
     bool_t available;
     int socket;
-    struct listElem* next;
-    struct listElem* previous;
+    bool_t empty;
 };
 
-// Type declarations for the list node and a node pointer
-typedef struct listElem listNode;
-typedef listNode* nodePointer;
+typedef struct listElem* entry_t;
 
-/* ---------------------------------------------------------------------
-*  ListBase
-*  ---------------------------------------------------------------------
-*  Description:
-*    The head of a list: it stores a pointer to the first node, one
-*    to the last node (so that add and remove operations have a O(1) cost)
-*    and the current length of the list (this way getting the size has
-*    a O(1) cost as well). */
 struct listBase
 {
-    nodePointer head;
-    nodePointer tail;
     int semid;
-    size_t length;
+    int length;
+    entry_t list[MAX_USERS];
 };
-
-// Type declaration for the base type
-typedef struct listBase listStruct;
 
 /* ============================================================================
 *  Generic functions
 *  ========================================================================= */
 
+// A macro that just returns checks if the list is either null or empty
+#define IS_EMPTY(target) target->length == 0
+
 // CreateList
 list_t create_list(int semid)
 {
-    list_t outList = (list_t)malloc(sizeof(listStruct));
-    if (outList == NULL)
+    int i;
+    list_t out_list = (list_t)malloc(sizeof(struct listBase));
+    if (out_list == NULL)
     {
-        fprintf(stderr, "Malloc cannot allocate more space\n");
+        fprintf(stderr, "Malloc failed\n");
         exit(EXIT_FAILURE);
     }
-    outList->head = NULL;
-    outList->tail = NULL;
-    outList->length = 0;
-    outList->semid = semid;
-    return outList;
+    out_list->semid = semid;
+    out_list->length = 0;
+    for (i = 0; i < MAX_USERS; i++)
+    {
+        entry_t node = (entry_t)malloc(sizeof(struct listElem));
+        if (node == NULL)
+        {
+            fprintf(stderr, "Malloc failed\n");
+            exit(EXIT_FAILURE);
+        }
+        memset(node, 0, sizeof(struct listElem));
+        node->empty = EMPTY;
+        (out_list->list[i]) = node;
+    }
+    return out_list;
 }
 
 // DestroyList
-void destroy_list(list_t* list)
+void destroy_list(list_t list)
 {
-    int ret;
+    int ret, i, semid = list->semid;
 
-    if (list == NULL) return;
+    SEM_LOCK(sop, semid);
 
-    SEM_LOCK(sop, (*list)->semid);
-    // Deallocate all the nodes in the list
-    nodePointer pointer = (*list)->head;
-    while (pointer != NULL)
+    if (IS_EMPTY(list))
     {
-        // Get a temp reference to the current node
-        nodePointer temp = pointer;
-        pointer = pointer->next;
+        SEM_RELEASE(sop, semid);
+        return;
+    }
 
-        // Deallocate the content of the node and the node itself
-        printf("DEBUG cleaning the name\n");
-        free(temp->name);
-        printf("DEBUG cleaning the guid\n");
-        free(temp->guid);
-        //printf("DEBUG cleaning the partner guid\n");
-        //free(temp->partner);
-        while (TRUE)
+    // Deallocate all the nodes in the list
+    for (i = 0; i < MAX_USERS; i++)
+    {
+        entry_t temp = list->list[i];
+
+        if (temp->empty != EMPTY)
         {
-            printf("DEBUG closing the socket\n");
-            ret = close(temp->socket);
-            if (ret == -1 && errno == EINTR) continue;
-            else if (ret == -1)
+            // Deallocate the content of the entry
+            printf("DEBUG cleaning the name\n");
+            free(temp->name);
+            printf("DEBUG cleaning the guid\n");
+            free(temp->guid);
+            while (TRUE)
             {
-                SEM_RELEASE(sop, (*list)->semid);
-                fprintf(stderr, "Error closing the semaphore%s\n", strerror(errno));
-                exit(EXIT_FAILURE);
+                printf("DEBUG closing the socket\n");
+                ret = close(temp->socket);
+                if (ret == -1 && errno == EINTR) continue;
+                else if (ret == -1)
+                {
+                    SEM_RELEASE(sop, semid);
+                    fprintf(stderr, "Error closing the semaphore %s\n", strerror(errno));
+                    exit(EXIT_FAILURE);
+                }
+                else break;
             }
-            else break;
         }
+        free(temp);
     }
 
     // Finally free the list header
-    SEM_RELEASE(sop, (*list)->semid);
-    free((*list));
+    free(list);
+    SEM_RELEASE(sop, semid);
     printf("DEBUG SUCCESS!\n");
 }
 
 // Get length
 int get_list_length(list_t list)
 {
-    if (list == NULL) return -1;
     SEM_LOCK(sop, list->semid);
     int l = list->length;
     SEM_RELEASE(sop, list->semid);
@@ -127,8 +131,7 @@ int get_list_length(list_t list)
 // Add
 bool_t add(list_t list, string_t name, guid_t guid, int socket)
 {
-    if (list == NULL) return FALSE;
-    int semid = list->semid;
+    int semid = list->semid, i;
 
     SEM_LOCK(sop, semid);
 
@@ -139,46 +142,46 @@ bool_t add(list_t list, string_t name, guid_t guid, int socket)
     }
 
     // Allocate the new node and set its info
-    nodePointer node = (nodePointer)malloc(sizeof(listNode));
+    entry_t node = (entry_t)malloc(sizeof(struct listElem));
     if (node == NULL)
     {
-        fprintf(stderr, "Malloc cannot allocate more space\n");
+        fprintf(stderr, "Malloc failed\n");
         exit(EXIT_FAILURE);
     }
     node->name = name;
     node->socket = socket;
     node->guid = guid;
     node->available = FALSE;
-    node->next = NULL;
     node->partner = NULL;
+    node->empty = FALSE;
+    printf("DEBUG: node allocated and filled\n");
 
-    // Add as the last element in the list
-    if (list->head == NULL)
+    // insert the node in the first available spot
+    for (i = 0; i < MAX_USERS; i++)
     {
-        list->head = node;
-        list->tail = node;
-        node->previous = NULL;
+        entry_t entry = list->list[i];
+        printf("DEBUG: took pointer to the current element\n");
+        if (entry->empty)
+        {
+            // Place the new node in the empty spot and free the old node
+            printf("DEBUG: placed the new one into the old one spot %d\n", i);
+            (list->list[i]) = node;
+            printf("DEBUG: old one freed\n");
+            free(entry);
+            break;
+        }
     }
-    else
-    {
-        node->previous = list->tail;
-        list->tail->next = node;
-        list->tail = node;
-    }
+
     list->length = list->length + 1;
 
     SEM_RELEASE(sop, semid);
     return TRUE;
 }
 
-// A macro that just returns checks if the list is either null or empty
-#define IS_EMPTY(target) target->length == 0
-
 // Remove GUID
 bool_t remove_guid(list_t list, guid_t guid)
 {
-    if (list == NULL) return FALSE;
-    int semid = list->semid;
+    int semid = list->semid, i;
 
     SEM_LOCK(sop, semid);
 
@@ -190,22 +193,22 @@ bool_t remove_guid(list_t list, guid_t guid)
     }
 
     // Create a temp iterator
-    nodePointer pointer = list->head;
-    while (pointer != NULL)
+    for (i = 0; i < MAX_USERS; i++)
     {
+        entry_t node = list->list[i];
+
         // If the GUID matches, remove the item from the list
-        if (guid_equals(pointer->guid, guid))
+        if (!node->empty && guid_equals(node->guid, guid))
         {
             // Deallocate the content of the item
             printf("DEBUG guid found in the users list, start freeing\n");
-            free(pointer->name);
+            free(node->name);
             printf("DEBUG name freed\n");
-            free(pointer->guid);
+            free(node->guid);
             printf("DEBUG guid freed\n");
-            //free(pointer->partner);
             while (TRUE)
             {
-                int ret = close(pointer->socket);
+                int ret = close(node->socket);
                 if (ret == -1 && errno == EINTR) continue;
                 else if (ret == -1)
                 {
@@ -216,25 +219,14 @@ bool_t remove_guid(list_t list, guid_t guid)
             }
             printf("DEBUG socket closed\n");
 
-            // Adjust the references
-            if (pointer->next == NULL) list->tail = NULL;
-            else
-            {
-                if (pointer->previous != NULL) (pointer->previous)->next = pointer->next;
-                else (pointer->next)->previous = NULL;
-            }
-            printf("DEBUG references adjusted\n");
-
             // Update the list length and deallocate the removed item
+            memset(node, 0, sizeof(struct listElem));
+            node->empty = EMPTY;
             list->length = list->length - 1;
-            free(pointer);
             printf("DEBUG node itself freed\n");
             SEM_RELEASE(sop, semid);
             return TRUE;
         }
-
-        // Move to the next element in the list
-        pointer = pointer->next;
     }
 
     // GUID not found, just return false
@@ -243,24 +235,29 @@ bool_t remove_guid(list_t list, guid_t guid)
 }
 
 // Get node
-static nodePointer get_node(list_t list, guid_t guid)
+static entry_t get_node(list_t list, guid_t guid)
 {
-    if (list == NULL) return NULL;
-    int semid = list->semid;
+    int semid = list->semid, i;
 
     SEM_LOCK(sop, semid);
 
-    // Iterate the target list
-    nodePointer pointer = list->head;
-    while (pointer != NULL)
+    if (IS_EMPTY(list))
     {
+        SEM_RELEASE(sop, semid);
+        return NULL;
+    }
+
+    // Iterate the target list
+    for (i = 0; i < MAX_USERS; i++)
+    {
+        entry_t pointer = list->list[i];
+
         // If the GUIDs match, return the current node
-        if (guid_equals(pointer->guid, guid))
+        if (!pointer->empty && guid_equals(pointer->guid, guid))
         {
             SEM_RELEASE(sop, semid);
             return pointer;
         }
-        pointer = pointer->next;
     }
 
     // Search unsuccessful, return null
@@ -271,12 +268,8 @@ static nodePointer get_node(list_t list, guid_t guid)
 // Set available flag
 bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value)
 {
-    // Input check
-    if (list == NULL) return FALSE;
-    if (IS_EMPTY(list)) return FALSE;
-
     // Try to get the right item inside the list
-    nodePointer targetNode = get_node(list, guid);
+    entry_t targetNode = get_node(list, guid);
 
     // If the GUID isn't present, just return false
     if (targetNode == NULL) return FALSE;
@@ -291,7 +284,7 @@ bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value)
 // Set the chat partner of the user "guid" at "partner"
 bool_t set_partner(list_t list, guid_t guid, guid_t partner)
 {
-    nodePointer n = get_node(list, guid);
+    entry_t n = get_node(list, guid);
     if (n == NULL) return FALSE;
     SEM_LOCK(sop, list->semid);
     n->partner = partner;
@@ -302,8 +295,8 @@ bool_t set_partner(list_t list, guid_t guid, guid_t partner)
 // Get the available flag of the client described by guid
 bool_t get_available_flag(const list_t list, guid_t guid)
 {
-    if (IS_EMPTY(list)) return FALSE;
-    nodePointer n = get_node(list, guid);
+    entry_t n = get_node(list, guid);
+    if (n == NULL) return FALSE;
     SEM_LOCK(sop, list->semid);
     bool_t av = n->available;
     SEM_RELEASE(sop, list->semid);
@@ -313,7 +306,8 @@ bool_t get_available_flag(const list_t list, guid_t guid)
 // Get the partner guid
 guid_t get_partner(const list_t list, guid_t guid)
 {
-    nodePointer n = get_node(list, guid);
+    entry_t n = get_node(list, guid);
+    if (n == NULL) return NULL;
     SEM_LOCK(sop, list->semid);
     guid_t p = n->partner;
     SEM_RELEASE(sop, list->semid);
@@ -323,14 +317,11 @@ guid_t get_partner(const list_t list, guid_t guid)
 // Get client connection socket
 int get_socket(const list_t list, guid_t guid)
 {
-    // Input check
-    if (IS_EMPTY(list)) return -1;
-
     // Try to get the target node
-    nodePointer pointer = get_node(list, guid);
+    entry_t pointer = get_node(list, guid);
     if (pointer == NULL) return -1;
 
-    // If the GUID has been found, return the corresponding IP address
+    // If the GUID has been found, return the corresponding socket
     SEM_LOCK(sop, list->semid);
     int s = pointer->socket;
     SEM_RELEASE(sop, list->semid);
@@ -338,9 +329,9 @@ int get_socket(const list_t list, guid_t guid)
 }
 
 // Get the name of the client with the given guid
-string_t get_name(const list_t list, guid_t guid)
+char* get_name(const list_t list, guid_t guid)
 {
-    nodePointer n = get_node(list, guid);
+    entry_t n = get_node(list, guid);
     if (n == NULL) return NULL;
     SEM_LOCK(sop, list->semid);
     string_t ret = n->name;
@@ -351,42 +342,50 @@ string_t get_name(const list_t list, guid_t guid)
 // Iterate
 void users_list_iterate(const list_t list, void(*f)(guid_t))
 {
+    int semid = list->semid, i;
+    SEM_LOCK(sop, semid);
+
     // Input check
-    if (list == NULL) return;
-    if (IS_EMPTY(list)) return;
+    if (IS_EMPTY(list))
+    {
+        SEM_RELEASE(sop, semid);
+        return;
+    }
 
     // Iterate and call the input function on each node
-    SEM_LOCK(sop, list->semid);
-    nodePointer pointer = list->head;
-    while (pointer != NULL)
+    for (i = 0; i < MAX_USERS; i++)
     {
-        f(pointer->guid);
-        pointer = pointer->next;
+        entry_t e = list->list[i];
+        if (!e->empty) f(e->guid);
     }
-    SEM_RELEASE(sop, list->semid);
+    SEM_RELEASE(sop, semid);
 }
 
 // SerializeList
 string_t serialize_list(const list_t list)
 {
+    int semid = list->semid, i;
+
     // Input check
-    if (list == NULL) return create_empty_string();
-    if (IS_EMPTY(list)) return create_empty_string();
+    SEM_LOCK(sop, semid);
+    if (IS_EMPTY(list))
+    {
+        SEM_RELEASE(sop, semid);
+        return create_empty_string();
+    }
+    SEM_RELEASE(sop, semid);
 
     // Initialize the buffer and the local variables
     string_t buffer = create_empty_string();
     int total_len = 0;
 
     // Start iterating through the list
-    SEM_LOCK(sop, list->semid);
-    nodePointer pointer = list->head;
-    while (pointer != NULL)
+    SEM_LOCK(sop, semid);
+    for (i = 0; i < MAX_USERS; i++)
     {
-        if (!(pointer->available))
-        {
-            pointer = pointer->next;
-            continue;
-        }
+        entry_t pointer = list->list[i];
+
+        if (pointer->empty || !(pointer->available)) continue;
 
         printf("DEBUG name: %s\n", pointer->name);
         // Get the length of the user name and its string terminator
@@ -400,7 +399,7 @@ string_t serialize_list(const list_t list)
         char* internal_buffer = (char*)malloc(sizeof(char) * instance_len);
         if (internal_buffer == NULL)
         {
-            SEM_RELEASE(sop, list->semid);
+            SEM_RELEASE(sop, semid);
             fprintf(stderr, "Malloc cannot allocate more space\n");
             exit(EXIT_FAILURE);
         }
@@ -410,7 +409,7 @@ string_t serialize_list(const list_t list)
         edited_name[name_len - 1] = INTERNAL_SEPARATOR;
 
         // Add it to the internal buffer, then free the copy
-        strcpy(internal_buffer, edited_name);
+        strncpy(internal_buffer, edited_name, name_len);
         free(edited_name);
 
         // Serialize the GUID and copy it inside the buffer
@@ -420,11 +419,8 @@ string_t serialize_list(const list_t list)
 
         // Add the current string to the buffer
         buffer = string_concat(buffer, internal_buffer, EXTERNAL_SEPARATOR);
-
-        // Move to the next item inside the list
-        pointer = pointer->next;
     }
     buffer[total_len - 1] = STRING_TERMINATOR;
-    SEM_RELEASE(sop, list->semid);
+    SEM_RELEASE(sop, semid);
     return buffer;
 }

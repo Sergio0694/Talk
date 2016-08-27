@@ -14,6 +14,7 @@
 #define MAX_USERS 10
 
 // =================== Public types ====================
+
 typedef struct listBase* list_t;
 
 // ==================== Functions ======================
@@ -32,7 +33,7 @@ list_t create_list(int semid);
 *    Deallocates a list and all its content
 *  Parameters:
 *    list ---> The list to destroy */
-void destroy_list(list_t* list);
+void destroy_list(list_t list);
 
 /* =====================================================================
 *  GetLength

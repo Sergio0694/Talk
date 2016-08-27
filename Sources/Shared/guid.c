@@ -21,7 +21,7 @@ struct guidStruct
 *  Generic functions
 *  ========================================================================= */
 
-// Generates a random 64 bit GUID
+// Generates a random 128 bit GUID
 guid_t new_guid()
 {
     // Initialize the GUID
