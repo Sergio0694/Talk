@@ -318,8 +318,6 @@ void* client_connection_handler(void* arg)
             ret = send_to_client(communication_socket, buf);
             check_send_error(ret, args, guid);
             printf("DEBUG partner name '%s' sent, time to start the chat session\n", buf);
-
-            free(temp);
         }
 
         // start the chat

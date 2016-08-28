@@ -120,6 +120,7 @@ static void load_users_list()
     recv_from_socket(socketd, buffer, BUFFER_LENGTH);
     printf("List received\n");
     printf("DEBUG: list is %s\n", buffer);
+    destroy_user_list(client_users_list);
     client_users_list = deserialize_client_list(buffer, client_guid);
 
     // Print the users list

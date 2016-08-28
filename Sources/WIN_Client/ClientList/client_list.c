@@ -87,6 +87,8 @@ void destroy_user_list(client_list_t list)
     {
         clientNodePointer temp = pointer;
         pointer = pointer->next;
+        free(temp->name);
+        free(temp->guid);
         free(temp);
     }
     free(list);
