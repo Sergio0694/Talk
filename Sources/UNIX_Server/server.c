@@ -31,7 +31,6 @@ typedef struct thread_args_s
 
 list_t users_list;
 int semid, server_socket;
-bool_t quit_received;
 
 // used in calls to semctl()
 union semun
@@ -130,36 +129,21 @@ int chat_handler(int src, int dst)
     struct timeval tv;
     set_timeval(&tv, 120, 0);
 
-    struct sembuf sop = { 0 };
-    sop.sem_num = 1;
-
     while (TRUE)
     {
         ret = recv_from_client(src, temp, buf_len);
         if (ret < 0) return ret;
 
-        SEM_LOCK(sop, semid);
-        if (!quit_received)
-        {
-            SEM_RELEASE(sop, semid);
-            // add to the received message a 0 to represent the source and
-            // a 1 to represent the partner
-            snprintf(buf, buf_len, "0%s", temp);
-            ret = send_to_client(src, buf);
-            if (ret < 0) return ret;
-            snprintf(buf, buf_len, "1%s", temp);
-            ret = send_to_client(dst, buf);
-            if (ret < 0) return ret;
-        }
-        SEM_RELEASE(sop, semid);
+        // add to the received message a 0 to represent the source and
+        // a 1 to represent the partner
+        snprintf(buf, buf_len, "0%s", temp);
+        ret = send_to_client(src, buf);
+        if (ret < 0) return ret;
+        snprintf(buf, buf_len, "1%s", temp);
+        ret = send_to_client(dst, buf);
+        if (ret < 0) return ret;
 
-        if (strncmp(temp, "QUIT", 4) == 0)
-        {
-            SEM_LOCK(sop, semid);
-            quit_received = TRUE;
-            SEM_RELEASE(sop, semid);
-            break;
-        }
+        if (strncmp(temp, "QUIT", 4) == 0) break;
     }
     return 0;
 }
@@ -259,7 +243,7 @@ void* client_connection_handler(void* arg)
 
             // wait for the partner to be setted up by the chooser
             struct sembuf sop = { 0 };
-            sop.sem_num = 2;
+            sop.sem_num = 1;
             SEM_LOCK(sop, semid);
             partner_guid = get_partner(users_list, guid);
             partner_socket = get_socket(users_list, partner_guid);
@@ -299,7 +283,7 @@ void* client_connection_handler(void* arg)
 
             // partner setted up
             struct sembuf sop = { 0 };
-            sop.sem_num = 2;
+            sop.sem_num = 1;
             SEM_RELEASE(sop, semid);
 
             // send the user's name to the chosen user
@@ -320,8 +304,11 @@ void* client_connection_handler(void* arg)
             printf("DEBUG partner name '%s' sent, time to start the chat session\n", buf);
         }
 
+        // Before entering the chat
+        set_available_flag(users_list, guid, FALSE);
+        set_available_flag(users_list, partner_guid, FALSE);
+
         // start the chat
-        quit_received = FALSE;
         ret = chat_handler(communication_socket, partner_socket);
         if (ret == TIME_OUT_EXPIRED)
         {
@@ -331,11 +318,6 @@ void* client_connection_handler(void* arg)
         {
             close_and_cleanup(args, guid, "Unexpected error occurs");
         }*/
-
-        // If a quit message is received the client is no longer available for chatting
-        printf("DEBUG QUIT message received, set the user as no available\n");
-        set_available_flag(users_list, guid, FALSE);
-        set_available_flag(users_list, partner_guid, FALSE);
 
     } // end of while
 }
@@ -394,13 +376,9 @@ int main()
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
-    // initialize the semaphore 1 to 1 -- is used for the access to the global "quit_received"
-    arg.val = 1;
-    ret = semctl(semid, 1, SETVAL, arg);
-    ERROR_HELPER(ret, "Cannot initialize the semaphore");
-    // initialize the semaphore 2 to 0 -- is used to synchronize the partner's setting
+    // initialize the semaphore 1 to 1 -- is used to synchronize the partner's setting
     arg.val = 0;
-    ret = semctl(semid, 2, SETVAL, arg);
+    ret = semctl(semid, 1, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */

@@ -208,6 +208,9 @@ DWORD WINAPI chat_handler_in(LPVOID arg)
             if (strncmp(quit, "", 1) == 0) strncpy(quit, "QUIT", 4);
             BOOL success = ReleaseSemaphore(semaphore, 1, NULL);
             ERROR_HELPER(!success, "Error while releasing the semaphore");
+
+            // receive the notification that the other client has perform a quit
+            recv_from_socket(socketd, buffer, BUFFER_LENGTH);
             break;
         }
 
@@ -231,6 +234,8 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
 {
     while (TRUE)
     {
+        char message[BUFFER_LENGTH];
+
         // if a quit message is received, exit the chat
         DWORD ret = WaitForSingleObject(semaphore, INFINITE);
         ERROR_HELPER(ret == WAIT_FAILED, "Error while waiting");
@@ -246,7 +251,6 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
         ERROR_HELPER(!success, "Error while releasing the semaphore");
 
         // Send the new message if necessary
-        char message[BUFFER_LENGTH];
         checked_fgets(message, BUFFER_LENGTH);
         if (message[0] == '\n') continue;
         send_to_socket(socketd, message);
