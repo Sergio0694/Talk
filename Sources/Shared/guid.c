@@ -60,13 +60,18 @@ guid_t new_guid()
     // Fill the remaining bits with random padding
     int64_t random_bits = 0;
     int i;
-    for (i = 0; i < 63; i++)
+    for (i = 0; i < 55; i++)
     {
         // Calculate and add a new random bit
         if (rand() % 2) random_bits |= 1;
         random_bits <<= 1;
     }
     guid->random = random_bits;
+
+    // Sequential counter
+    static char counter = 0;
+    guid->random <<= 8;
+    guid->random |= counter++;
 
     // Finally return the GUID
     return guid;

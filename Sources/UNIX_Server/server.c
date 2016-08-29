@@ -166,7 +166,11 @@ void* client_connection_handler(void* arg)
     int partner_socket;
 
     // client representation on the server side
+    struct sembuf sop = { 0 };
+    sop.sem_num = 2;
+    SEM_LOCK(sop, semid);
     guid_t guid = new_guid();
+    SEM_RELEASE(sop, semid);
 
     // timeval struct for recv timeout
     struct timeval tv;
@@ -242,7 +246,7 @@ void* client_connection_handler(void* arg)
             set_available_flag(users_list, guid, TRUE);
 
             // wait for the partner to be setted up by the chooser
-            struct sembuf sop = { 0 };
+            memset(&sop, 0, sizeof(struct sembuf));
             sop.sem_num = 1;
             SEM_LOCK(sop, semid);
             partner_guid = get_partner(users_list, guid);
@@ -263,8 +267,8 @@ void* client_connection_handler(void* arg)
             printf("DEBUG guid deserialized check for availability\n");
             if (!get_available_flag(users_list, partner_guid))
             {
-                strncpy(buf, "0", 2);
-                ret = send(communication_socket, buf, strlen(buf), 0);
+                strncpy(buf, "0The user is not available at the moment, try a refresh", buf_len);
+                ret = send_to_client(communication_socket, buf);
                 check_send_error(ret, args, guid);
                 continue;
             }
@@ -272,17 +276,17 @@ void* client_connection_handler(void* arg)
             // Retrieve the partner socket and save the partner info in the users list and the user
             // info in the partner's position inside the users list
             partner_socket = get_socket(users_list, partner_guid);
-            if (!set_partner(users_list, guid, partner_guid))
+            if (!set_partner(users_list, guid, partner_guid) ||
+                !set_partner(users_list, partner_guid, guid))
             {
-                close_and_cleanup(args, guid, "Cannot save the chat partner's info in the list");
-            }
-            if (!set_partner(users_list, partner_guid, guid))
-            {
+                strncpy(buf, "0Problems with internal operation, try later", buf_len);
+                ret = send_to_client(communication_socket, buf);
+                check_send_error(ret, args, guid);
                 close_and_cleanup(args, guid, "Cannot save the chat partner's info in the list");
             }
 
             // partner setted up
-            struct sembuf sop = { 0 };
+            memset(&sop, 0, sizeof(struct sembuf));
             sop.sem_num = 1;
             SEM_RELEASE(sop, semid);
 
@@ -322,15 +326,18 @@ void* client_connection_handler(void* arg)
     } // end of while
 }
 
-// Handler for SIGINT and SIGHUP
+// Handler for SIGINT, SIGHUP, SIGTERM and SIGQUIT
 void signal_handler(int signum)
 {
     printf("\nDEBUG Signal received, cleaning the users list\n");
+    // Udestroy the users list
     destroy_list(users_list);
     printf("DEBUG Removing the semaphore\n");
+    // Remove the shared semaphore
     int ret = semctl(semid, 0, IPC_RMID, NULL);
     ERROR_HELPER(ret, "Error while removing the semaphore");
     printf("DEBUG closing the server socket\n");
+    // Close the server socket and exit the process
     while (TRUE)
     {
         ret = close(server_socket);
@@ -353,8 +360,15 @@ void add_signal(int signum, void (*f)(int))
     }
 }
 
-void add_sigaction(int signum, struct sigaction act)
+void add_sigaction(int signum)
 {
+    // prepare the arguments for the sigaction call
+    sigset_t mask;
+    sigfillset(&mask);
+    struct sigaction act = { 0 };
+    act.sa_handler = signal_handler;
+    act.sa_mask = mask;
+
     int ret = sigaction(signum, &act, NULL);
     ERROR_HELPER(ret, "Error in sigaction");
 }
@@ -376,9 +390,14 @@ int main()
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
-    // initialize the semaphore 1 to 1 -- is used to synchronize the partner's setting
+    // initialize the semaphore 1 to 0 -- is used to synchronize the partner's setting
     arg.val = 0;
     ret = semctl(semid, 1, SETVAL, arg);
+    ERROR_HELPER(ret, "Cannot initialize the semaphore");
+
+    // initialize the semaphore 2 to 0 -- is used to synchronize the guid's creation
+    arg.val = 1;
+    ret = semctl(semid, 2, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */
@@ -395,18 +414,11 @@ int main()
     // Ignore the sigchild event (should not happen anyway)
     add_signal(SIGCHLD, SIG_IGN);
 
-    // prepare the arguments for the sigaction call
-    sigset_t mask;
-    sigfillset(&mask);
-    struct sigaction act = { 0 };
-    act.sa_handler = signal_handler;
-    act.sa_mask = mask;
-
-    // Handling all signals that matter with the same function
-    add_sigaction(SIGHUP, act);
-    add_sigaction(SIGINT, act);
-    add_sigaction(SIGTERM, act);
-    add_sigaction(SIGQUIT, act);
+    // Handling all signals that matter with the same function that cleanup all
+    add_sigaction(SIGHUP);
+    add_sigaction(SIGINT);
+    add_sigaction(SIGTERM);
+    add_sigaction(SIGQUIT);
 
     while(TRUE)
     {

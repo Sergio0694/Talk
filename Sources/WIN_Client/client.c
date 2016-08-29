@@ -447,6 +447,7 @@ int main()
             {
                 printf("Something goes wrong in the connection with the other user\n");
                 printf("Please repeat the process or change action\n");
+                printf("SERVER: %s\n", buffer + 1);
                 continue;
             }
 
