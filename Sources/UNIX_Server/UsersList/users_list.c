@@ -101,13 +101,10 @@ void destroy_list(list_t list)
         if (temp->empty != EMPTY)
         {
             // Deallocate the content of the entry
-            printf("DEBUG cleaning the name\n");
             free(temp->name);
-            printf("DEBUG cleaning the guid\n");
             free(temp->guid);
             while (TRUE)
             {
-                printf("DEBUG closing the socket\n");
                 ret = close(temp->socket);
                 if (ret == -1 && errno == EINTR) continue;
                 else if (ret == -1)
@@ -125,7 +122,6 @@ void destroy_list(list_t list)
     // Finally free the list header
     free(list);
     SEM_RELEASE(sop, semid);
-    printf("DEBUG SUCCESS!\n");
 }
 
 // Get length
@@ -163,19 +159,15 @@ bool_t add(list_t list, string_t name, guid_t guid, int socket)
     node->available = FALSE;
     node->partner = NULL;
     node->empty = FALSE;
-    printf("DEBUG: node allocated and filled\n");
 
     // Insert the node in the first available spot
     for (i = 0; i < MAX_USERS; i++)
     {
         entry_t entry = list->list[i];
-        printf("DEBUG: took pointer to the current element\n");
         if (entry->empty)
         {
             // Place the new node in the empty spot and free the old node
-            printf("DEBUG: placed the new one into the old one spot %d\n", i);
             (list->list[i]) = node;
-            printf("DEBUG: old one freed\n");
             free(entry);
             break;
         }
@@ -210,11 +202,8 @@ bool_t remove_guid(list_t list, guid_t guid)
         if (!node->empty && guid_equals(node->guid, guid))
         {
             // Deallocate the content of the item
-            printf("DEBUG guid found in the users list, start freeing\n");
             free(node->name);
-            printf("DEBUG name freed\n");
             free(node->guid);
-            printf("DEBUG guid freed\n");
             while (TRUE)
             {
                 int ret = close(node->socket);
@@ -226,13 +215,11 @@ bool_t remove_guid(list_t list, guid_t guid)
                 }
                 else break;
             }
-            printf("DEBUG socket closed\n");
 
             // Update the list length and set the node to empty
             memset(node, 0, sizeof(struct listElem));
             node->empty = EMPTY;
             list->length = list->length - 1;
-            printf("DEBUG node itself freed\n");
             SEM_RELEASE(sop, semid);
             return TRUE;
         }
@@ -396,7 +383,6 @@ string_t serialize_list(const list_t list)
         // Only the available users will be serialized
         if (pointer->empty || !(pointer->available)) continue;
 
-        printf("DEBUG name: %s\n", pointer->name);
         // Get the length of the user name and its string terminator
         int name_len = strlen(pointer->name) + 1;
 

@@ -325,7 +325,7 @@ void signal_handler(int signum)
         else if (ret == -1) exit(EXIT_FAILURE);
         else break;
     }
-    printf("Goodbye!\n");
+    printf("\nGoodbye!\n");
     exit(EXIT_SUCCESS);
 }
 

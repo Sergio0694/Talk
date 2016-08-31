@@ -249,10 +249,8 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
         // If a quit message is received, exit the chat
         DWORD ret = WaitForSingleObject(semaphore, INFINITE);
         ERROR_HELPER(ret == WAIT_FAILED, "Error while waiting");
-        printf("DEBUG: Check for QUIT message\n");
         if (strncmp(quit, "QUIT", 4) == 0)
         {
-            printf("DEBUG: received a QUIT message\n");
             char quit_to_send[5] = { 'Q', 'U', 'I', 'T', '\n' };
             send_to_socket(socketd, quit_to_send);
             break;
@@ -309,7 +307,6 @@ void chat(string_t username)
 
     DWORD join = WaitForMultipleObjects(2, threads, TRUE, INFINITE);
     ERROR_HELPER(join == WAIT_FAILED, "Error while joining the two threads");
-    printf("DEBUG: received a QUIT, exited from the chat threads\n");
 
     if (!CloseHandle(semaphore)) ERROR_HELPER(TRUE, "Error while closing the semaphore");
 }
@@ -390,7 +387,6 @@ int main()
         // Read from the standard input the user choice
         printf(">> ");
         checked_fgets(buffer, BUFFER_LENGTH);
-        int menu_length = strlen(buffer);
 
         // If menu_choice is refresh user list, receive and print the users list
         if (strncmp(buffer, REFRESH_MESSAGE, strlen(REFRESH_MESSAGE)) == 0)
