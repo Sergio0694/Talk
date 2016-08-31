@@ -2,7 +2,7 @@
 *  string_helper.h
 * ============================================================================
 
-*  Authors:         (c) 2015 Sergio Pedri and Andrea Salvati */
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
 
 #ifndef STRING_HELPER_H
 #define STRING_HELPER_H
@@ -31,7 +31,7 @@ string_t create_empty_string();
 *  Parameters:
 *    s1 ---> The first string
 *    s2 ---> The string to concat at the end of the first one
-*    separator ---> The separator to use between the two strings*/
+*    separator ---> The separator to use between the two strings */
 string_t string_concat(string_t s1, string_t s2, char separator);
 
 /* =====================================================================

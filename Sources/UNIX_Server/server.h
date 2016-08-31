@@ -1,8 +1,8 @@
 /* ============================================================================
-*  server_util.h
+*  server.h
 * ============================================================================
 
-*  Authors:         (c) 2015 Sergio Pedri and Andrea Salvati */
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
 
 #ifndef SERVER_H
 #define SERVER_H
@@ -11,11 +11,11 @@
 #include <stdlib.h> /* EXIT_FAILURE */
 
 #define PORT_NUMBER 25000
-#define MAX_CONN_QUEUE  3   // max number of connections the server can queue
+#define MAX_CONN_QUEUE  3   // Max number of connections the server can queue
 
 #define BUFFER_LENGTH 1024
 
-// macro to simplify error handling
+// Macro to simplify error handling
 #define ERROR_HELPER(ret, message)  do                                  \
         {                                                               \
             if (ret < 0)                                                \

@@ -1,3 +1,9 @@
+/* ===========================================================================
+*  server.c
+* ============================================================================
+
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
+
 #include <errno.h>
 #include <string.h>     /* strerror() and strlen() */
 #include <unistd.h>     /* close() */
@@ -24,6 +30,7 @@
 #define DISCONNECT_MESSAGE "DISCONNECT"
 
 /* ===== GLOBAL VARIABLES ===== */
+
 typedef struct thread_args_s
 {
     int sock_desc;;
@@ -32,7 +39,7 @@ typedef struct thread_args_s
 list_t users_list;
 int semid, server_socket;
 
-// used in calls to semctl()
+// Used in calls to semctl()
 union semun
 {
     int val;                /* value for SETVAL */
@@ -42,6 +49,7 @@ union semun
     struct seminfo* __buf;  /* buffer for IPC_INFO (linux-specific) */
 #endif
 };
+
 /* ============================ */
 
 /* ===== PRIVATE FUNCTIONS ===== */
@@ -52,9 +60,7 @@ static void close_and_cleanup(conn_thread_args_t* args, guid_t guid, char* msg)
     int socketd = args->sock_desc;
     fprintf(stderr, "%s\n", msg);
     remove_guid(users_list, guid);
-    printf("DEBUG guid removed\n");
     free(args);
-    printf("DEBUG args freed\n");
     pthread_exit(NULL);
 }
 
@@ -77,6 +83,7 @@ static inline void check_send_error(int ret, conn_thread_args_t* args, guid_t gu
     }
 }
 
+// Checks the received name
 static void name_pickup(conn_thread_args_t* args, char** name, guid_t guid)
 {
     int ret, name_len;
@@ -118,14 +125,14 @@ static void name_pickup(conn_thread_args_t* args, char** name, guid_t guid)
 /* ============================= */
 
 // Function executed by both the chooser and the chosen clients, src and dst represent the sockets
-// by which the server receive and send the chat message from the two clients
+// used by the server to receive and send chat messages between the two clients
 int chat_handler(int src, int dst)
 {
-    // aux variables
+    // Aux variables
     char buf[BUFFER_LENGTH], temp[BUFFER_LENGTH];
     int buf_len = sizeof(buf), ret;
 
-    // timeval for the select timeout
+    // Timeval for the select timeout
     struct timeval tv;
     set_timeval(&tv, 120, 0);
 
@@ -134,7 +141,7 @@ int chat_handler(int src, int dst)
         ret = recv_from_client(src, temp, buf_len);
         if (ret < 0) return ret;
 
-        // add to the received message a 0 to represent the source and
+        // Add to the received message a 0 to represent the source and
         // a 1 to represent the partner
         snprintf(buf, buf_len, "0%s", temp);
         ret = send_to_client(src, buf);
@@ -151,78 +158,68 @@ int chat_handler(int src, int dst)
 // Function to handle the connection of the clients to the server
 void* client_connection_handler(void* arg)
 {
-    // get handler arguments
+    // Get handler arguments
     conn_thread_args_t* args = (conn_thread_args_t*)arg;
     int communication_socket = args->sock_desc;
 
-    // aux variables
+    // Aux variables
     char buf[BUFFER_LENGTH];
     size_t buf_len = sizeof(buf);
     int ret;
     string_t temp, name;
 
-    // chosen target information
+    // Chosen target information
     guid_t partner_guid;
     int partner_socket;
 
-    // client representation on the server side
+    // Client representation on the server side
     struct sembuf sop = { 0 };
     sop.sem_num = 2;
     SEM_LOCK(sop, semid);
     guid_t guid = new_guid();
     SEM_RELEASE(sop, semid);
 
-    // timeval struct for recv timeout
+    // Timeval struct for recv timeout
     struct timeval tv;
 
     // Welcome message
     sprintf(buf, "Welcome to Talk\nPlease choose a name: ");
-    printf("DEBUG sending the Welcome message\n");
     ret = send(communication_socket, buf, strlen(buf), 0);
     check_send_error(ret, args, guid);
-    printf("DEBUG: Welcome message sent on %d socket\n", communication_socket);
 
-    // set a 2 minutes timeout for the socket operations
+    // Set a 2 minutes timeout for the socket operations
     set_timeval(&tv, 120, 0);
     ret = setsockopt(communication_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval));
     if (ret < 0) close_and_cleanup(args, guid, "Cannot set SO_RCVTIMEO option");
 
-    // save the name
+    // Save the name
     name_pickup(args, &name, guid);
 
-    // send the generated guid to the client - append a 1 to the guid to communicate the success
-    printf("DEBUG serialize the generated guid\n");
+    // Send the generated guid to the client - prepend a 1 to the guid to communicate the success
     temp = serialize_guid(guid);
     snprintf(buf, buf_len, "1%s", temp);
-    printf("DEBUG: sending the generated guid %s\n", buf + 1);
     ret = send_to_client(communication_socket, buf);
     check_send_error(ret, args, guid);
-    printf("DEBUG: guid sent\n");
 
-    // cleanup
+    // Cleanup
     free(temp);
 
-    // add the user to users_list
-    printf("DEBUG adding the user to the users_list\n");
+    // Add the user to users_list
     bool_t added = add(users_list, name, guid, communication_socket);
     if (!added) close_and_cleanup(args, guid, "Cannot add the user to the users list");
 
     while (TRUE)
     {
-        // receive the command from the client
-        printf("DEBUG: Waiting for new commands from the user\n");
+        // Receive the command from the client
         ret = recv_from_client(communication_socket, buf, buf_len);
         check_recv_error(ret, args, guid);
-        printf("DEBUG: Command %s received\n", buf);
 
-        // the user command is to resend the user list
+        // The user command is to resend the users list
         if (strncmp(buf, REFRESH_MESSAGE, strlen(REFRESH_MESSAGE)) == 0)
         {
-            printf("DEBUG received a refresh request\nDEBUG sending the refreshed list\n");
             temp = serialize_list(users_list);
-            printf("DEBUG serialized list is %s\n", temp);
 
-            // send the serialized users list to the client
+            // Send the serialized users list to the client
             strncpy(buf, temp, buf_len);
             free(temp);
             printf("Sending the users list..\n");
@@ -232,20 +229,18 @@ void* client_connection_handler(void* arg)
             continue;
         }
 
-        // if the message received is DISCONNECT the client will be disconnected from the server
+        // If the message received is DISCONNECT the client will be disconnected from the server
         if (strncmp(buf, DISCONNECT_MESSAGE, strlen(DISCONNECT_MESSAGE)) == 0)
         {
-            printf("DEBUG: received a disconnect message\n");
             close_and_cleanup(args, guid, "The client want to be disconnected");
         }
 
         if (strncmp(buf, WAIT_FOR_CONNECTIONS, strlen(WAIT_FOR_CONNECTIONS)) == 0)
         {
             // Make the user available for chat
-            printf("DEBUG: received a wait message, setting the user as available\n");
             set_available_flag(users_list, guid, TRUE);
 
-            // wait for the partner to be setted up by the chooser
+            // Wait for the partner to be set up by the chooser
             memset(&sop, 0, sizeof(struct sembuf));
             sop.sem_num = 1;
             SEM_LOCK(sop, semid);
@@ -256,15 +251,11 @@ void* client_connection_handler(void* arg)
         if (strncmp(buf, CONNECT_WITH_ANOTHER_USER, strlen(CONNECT_WITH_ANOTHER_USER)) == 0)
         {
             // Receive the chosen guid from the client
-            printf("DEBUG message connect received, waiting for the chosen guid to be received\n");
             ret = recv_from_client(communication_socket, buf, buf_len);
             check_recv_error(ret, args, guid);
-            printf("DEBUG: guid received - %s\n", buf);
 
-
-            // save the partner guid and check for his availability
+            // Save the partner guid and check for his availability
             partner_guid = deserialize_guid(buf);
-            printf("DEBUG guid deserialized check for availability\n");
             if (!get_available_flag(users_list, partner_guid))
             {
                 strncpy(buf, "0The user is not available at the moment, try a refresh", buf_len);
@@ -285,58 +276,47 @@ void* client_connection_handler(void* arg)
                 close_and_cleanup(args, guid, "Cannot save the chat partner's info in the list");
             }
 
-            // partner setted up
+            // Partner set up
             memset(&sop, 0, sizeof(struct sembuf));
             sop.sem_num = 1;
             SEM_RELEASE(sop, semid);
 
-            // send the user's name to the chosen user
+            // Send the user's name to the chosen user
             strncpy(buf, "", buf_len);
             snprintf(buf, buf_len, "1%s", name);
             ret = send_to_client(partner_socket, buf);
             check_send_error(ret, args, guid);
 
-            // send the partner's name to the user
-            printf("DEBUG: retrieving and sending the partner name\n");
+            // Send the partner's name to the user
             temp = get_name(users_list, partner_guid);
-            printf("DEBUG: chosen partner info socket = %d, name = %s\n",
-                    partner_socket, temp);
             strncpy(buf, "", buf_len);
             snprintf(buf, buf_len, "1%s", temp);
             ret = send_to_client(communication_socket, buf);
             check_send_error(ret, args, guid);
-            printf("DEBUG partner name '%s' sent, time to start the chat session\n", buf);
         }
 
-        // Before entering the chat
+        // Before entering the chat make both users unavailable
         set_available_flag(users_list, guid, FALSE);
         set_available_flag(users_list, partner_guid, FALSE);
 
-        // start the chat
+        // Start the chat
         ret = chat_handler(communication_socket, partner_socket);
-        if (ret == TIME_OUT_EXPIRED)
-        {
-            close_and_cleanup(args, guid, "Chat timeout expired");
-        }
-        /*if (ret < 0)
-        {
-            close_and_cleanup(args, guid, "Unexpected error occurs");
-        }*/
+        if (ret == TIME_OUT_EXPIRED) close_and_cleanup(args, guid, "Chat timeout expired");
+        if (ret < 0) close_and_cleanup(args, guid, "Unexpected error occurs");
 
-    } // end of while
+    } // End of while
 }
 
 // Handler for SIGINT, SIGHUP, SIGTERM and SIGQUIT
 void signal_handler(int signum)
 {
-    printf("\nDEBUG Signal received, cleaning the users list\n");
-    // Udestroy the users list
+    // Destroy the users list
     destroy_list(users_list);
-    printf("DEBUG Removing the semaphore\n");
+
     // Remove the shared semaphore
     int ret = semctl(semid, 0, IPC_RMID, NULL);
     ERROR_HELPER(ret, "Error while removing the semaphore");
-    printf("DEBUG closing the server socket\n");
+
     // Close the server socket and exit the process
     while (TRUE)
     {
@@ -362,7 +342,7 @@ void add_signal(int signum, void (*f)(int))
 
 void add_sigaction(int signum)
 {
-    // prepare the arguments for the sigaction call
+    // Prepare the arguments for the sigaction call
     sigset_t mask;
     sigfillset(&mask);
     struct sigaction act = { 0 };
@@ -375,46 +355,47 @@ void add_sigaction(int signum)
 
 int main()
 {
-    // aux var
+    // Aux var
     int ret;
     int client_desc;
 
-    /* ==== semaphore creation and initialization ==== */
+    /* ==== Semaphores creation and initialization ==== */
 
-    // create the semaphore's set
+    // Create the semaphore set
     semid = semget(IPC_PRIVATE, /* semnum = */ 3, IPC_CREAT | 0660);
     ERROR_HELPER(semid, "Error in semaphore creation");
 
-    // initialize the semaphore 0 to 1 -- is used to synchronize the access to the users list
+    // Initialize the semaphore 0 to 1 -- it is used to synchronize the access to the users list
     union semun arg;
     arg.val = 1;
     ret = semctl(semid, 0, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
-    // initialize the semaphore 1 to 0 -- is used to synchronize the partner's setting
+
+    // Initialize the semaphore 1 to 0 -- it is used to synchronize the partner's setting
     arg.val = 0;
     ret = semctl(semid, 1, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
-    // initialize the semaphore 2 to 0 -- is used to synchronize the guid's creation
+    // Initialize the semaphore 2 to 0 -- it is used to synchronize the guid creation
     arg.val = 1;
     ret = semctl(semid, 2, SETVAL, arg);
     ERROR_HELPER(ret, "Cannot initialize the semaphore");
 
     /* =============================================== */
 
-    // server setup
+    // Server setup
     users_list = create_list(semid);
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     ERROR_HELPER(server_socket, "Cannot open server socket");
     server_intial_setup(server_socket);
 
-    // preventing the generation of SIGPIPE -- an EPIPE will be generated instead
+    // Preventing the generation of SIGPIPE -- an EPIPE will be generated instead
     add_signal(SIGPIPE, SIG_IGN);
 
     // Ignore the sigchild event (should not happen anyway)
     add_signal(SIGCHLD, SIG_IGN);
 
-    // Handling all signals that matter with the same function that cleanup all
+    // Handling all signals that matter with the same function
     add_sigaction(SIGHUP);
     add_sigaction(SIGINT);
     add_sigaction(SIGTERM);
@@ -424,16 +405,14 @@ int main()
     {
         printf("Waiting for connections ...\n");
 
-        // accept incoming connection - don't care about the client address
+        // Accept incoming connection - don't care about the client address
         client_desc = accept(server_socket, NULL, NULL);
-        if (client_desc == -1 && errno == EINTR) continue; // check for interruption by signals
+        if (client_desc == -1 && errno == EINTR) continue; // Check for interruption by signals
         ERROR_HELPER(client_desc, "Cannot open socket for incoming connection");
-
-        printf("DEBUG connection accepted -- client socket is: %d\n", client_desc);
 
         pthread_t thread;
 
-        // argument for thread
+        // Argument for thread
         conn_thread_args_t* args = (conn_thread_args_t*)malloc(sizeof(conn_thread_args_t));
         if (args == NULL)
         {

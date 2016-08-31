@@ -38,12 +38,8 @@ guid_t new_guid()
     static clock_t randomizer = 0, clock_backup;
     clock_t clock_time = clock() + randomizer;
     randomizer += clock_time;
-    if (clock_backup == clock_time)
-    {
-        clock_time |= rand();
-        clock_backup = clock_time;
-    }
-    else clock_backup = clock_time;
+    if (clock_backup == clock_time) clock_time |= rand();
+    clock_backup = clock_time;
 
     // Add the 32 bits of the clock time
     int64_time |= clock_time;

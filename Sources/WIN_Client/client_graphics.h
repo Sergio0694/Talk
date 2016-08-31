@@ -2,7 +2,7 @@
 *  client_graphics.h
 * ============================================================================
 
-*  Authors:         (c) 2015 Sergio Pedri and Andrea Salvati */
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
 
 #ifndef CLIENT_GRAPHICS_H
 #define CLIENT_GRAPHICS_H
@@ -11,13 +11,6 @@
 #include <time.h>
 #include <conio.h>
 #include <Windows.h>
-
-/* =====================================================================
-*  ClearScreen
-*  =====================================================================
-*  Description:
-*    Fills the console with blank spaces to clear its content */
-/*void clear_screen();*/
 
 /* ==================== Change color ===================== */
 

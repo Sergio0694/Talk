@@ -9,7 +9,7 @@ CFLAGS = -O2 -lpthread
 CFDEBUG = -Wall -g -D_FORTIFY_SOURCE=1
 
 # obj and exe files
-OBJ = server_util.o guid.o string_helper.o users_list.o queue.o
+OBJ = server_util.o guid.o string_helper.o users_list.o
 EXE = server.out
 
 # run and clean commands
@@ -36,9 +36,6 @@ string_helper.o: $(SHDIR)/string_helper.h $(SHDIR)/types.h
 
 users_list.o: $(LISTDIR)/users_list.c $(LISTDIR)/users_list.h
 	$(CC) -c $(LISTDIR)/users_list.c
-
-queue.o: $(SHDIR)/Queue/Queue.c $(SHDIR)/Queue/Queue.h
-	$(CC) -c $(SHDIR)/Queue/Queue.c
 
 run:
 	$(RUN)

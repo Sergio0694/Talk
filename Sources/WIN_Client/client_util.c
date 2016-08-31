@@ -1,3 +1,9 @@
+/* ===========================================================================
+*  client_util.c
+* ============================================================================
+
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
+
 #include <Winsock2.h>
 #include <string.h>
 
@@ -14,11 +20,6 @@ void send_to_socket(SOCKET socket, char* buf)
     // Calculates the length of the message to send
     int sent_bytes = 0;
     size_t msg_len = strlen(buf);
-    printf("DEBUG message len: %d\n", msg_len);
-
-    // Add a \n character instead of string terminator
-    //buf[msg_len++] = '\n';
-    printf("DEBUG message: %s\n", buf);
 
     while (TRUE)
     {
@@ -36,7 +37,6 @@ void send_to_socket(SOCKET socket, char* buf)
         if (sent_bytes == msg_len) break;
     }
 }
-
 
 // Receives a buffer from a given socket
 int recv_from_socket(SOCKET socket, char* buf, size_t buf_len)
@@ -79,12 +79,11 @@ void initialize_socket_API()
     ERROR_HELPER(startup_ret != 0, "There was an error during the SOCKET API initialization");
 }
 
+// Performs a fgets and checks for its return value
 void checked_fgets(char* buffer, size_t buffer_length)
 {
-    int c;
     char* fgets_ret;
     strncpy(buffer, "", buffer_length);
-    //while ((c = getchar()) != '\n' && c != EOF);
     fgets_ret = fgets(buffer, buffer_length, stdin);
     ERROR_HELPER(fgets_ret == NULL && ferror(stdin), "Error in fgets");
 }

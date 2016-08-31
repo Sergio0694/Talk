@@ -1,3 +1,9 @@
+/* ===========================================================================
+*  client_list.c
+* ============================================================================
+
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

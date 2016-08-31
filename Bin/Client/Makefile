@@ -18,13 +18,9 @@ SHHEADER = $(SHDIR)\guid.c $(SHDIR)\types.h $(SHDIR)\guid.h
 all:
 	mingw32-make clean
 	mingw32-make client
-	mingw32-make chat_window
 
 client: client.o $(OBJ)
 	$(CC) -o $(EXE) $(OBJ) client.o $(CFLAGS)
-
-chat_window: chat_window.o client_graphics.o client_util.o
-	$(CC) -o chat_window.exe chat_window.o client_graphics.o client_util.o $(CFLAGS)
 
 dbg: client.o $(OBJ)
 	$(CC) -o $(EXE) $(OBJ) client.o $(CFLAGS) $(CFDEBUG)
@@ -46,9 +42,6 @@ string_helper.o: $(SHDIR)\string_helper.h $(SHDIR)\types.h
 
 client_graphics.o: $(CLDIR)\client_graphics.c $(CLDIR)\client_graphics.h
 	$(CC) -c $(CLDIR)\client_graphics.c
-
-chat_window.o: $(CLDIR)\chat_window.c client_graphics.o client_util.o
-	$(CC) -c $(CLDIR)\chat_window.c
 
 run:
 	$(EXE)

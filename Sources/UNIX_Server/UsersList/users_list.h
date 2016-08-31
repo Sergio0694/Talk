@@ -2,7 +2,7 @@
 *  users_list.h
 * ============================================================================
 
-*  Authors:         (c) 2015 Sergio Pedri and Andrea Salvati */
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
 
 #ifndef USERS_LIST_H
 #define USERS_LIST_H
@@ -39,19 +39,19 @@ void destroy_list(list_t list);
 *  GetLength
 *  =====================================================================
 *  Description:
-*    Returns the length of the input list */
+*    Returns the number of element in the input list */
 int get_list_length(list_t list);
 
 /* =====================================================================
 *  Add
 *  =====================================================================
 *  Description:
-*    Adds a new node with the given info in the last position
+*    Adds a new node with the given info in the first available spot
 *  Parameters:
 *    list ---> The list to edit
 *    name ---> The name of the new node
 *    guid ---> The GUID of the new node
-*    ip ---> The IP of the new node */
+*    socket ---> The socket of the client */
 bool_t add(list_t list, string_t name, guid_t guid, int socket);
 
 /* =====================================================================
@@ -77,23 +77,10 @@ bool_t remove_guid(list_t list, guid_t guid);
 bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value);
 
 /* =====================================================================
-*  SetConnectionFlag
-*  =====================================================================
-*  Description:
-*    Sets the "connection requested" flag of the item with the given GUID.
-*    Returns TRUE if the operation was successful,
-*    FALSE if the item wasn't present
-*  Parameters:
-*    list ---> The input list
-*    guid ---> The GUID of the item to find
-*    target_value ---> The new value of the flag to set */
-bool_t set_connection_flag(const list_t list, guid_t guid, bool_t target_value);
-
-/* =====================================================================
 *  SetPartner
 *  =====================================================================
 *  Description:
-*    Sets the "partner_req" parameter of the item with the given GUID.
+*    Sets the "partner" parameter of the item with the given GUID.
 *    Returns TRUE if the operation was successful,
 *    FALSE if the item wasn't present
 *  Parameters:
@@ -112,17 +99,6 @@ bool_t set_partner(list_t list, guid_t guid, guid_t partner);
 *    list ---> The input list
 *    guid ---> The GUID of the item to find */
 bool_t get_available_flag(const list_t list, guid_t guid);
-
-/* =====================================================================
-*  GetConnectionRequestedFlag
-*  =====================================================================
-*  Description:
-*    Get the "connection_requested" flag of the item with the given GUID.
-*    Returns the boolean value of the flag
-*  Parameters:
-*    list ---> The input list
-*    guid ---> The GUID of the item to find */
-bool_t get_connection_requested_flag(list_t list, guid_t guid);
 
 /* =====================================================================
 *  GetPartner

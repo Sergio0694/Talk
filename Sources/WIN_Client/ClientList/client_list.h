@@ -2,7 +2,7 @@
 *  client_list.h
 * ============================================================================
 
-*  Authors:         (c) 2015 Sergio Pedri and Andrea Salvati */
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
 
 #ifndef CLIENT_LIST_H
 #define CLIENT_LIST_H

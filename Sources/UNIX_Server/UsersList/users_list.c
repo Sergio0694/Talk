@@ -1,3 +1,9 @@
+/* ===========================================================================
+*  users_list.c
+* ============================================================================
+
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +36,7 @@ struct listElem
 
 typedef struct listElem* entry_t;
 
+// Head node of the list
 struct listBase
 {
     int semid;
@@ -41,7 +48,7 @@ struct listBase
 *  Generic functions
 *  ========================================================================= */
 
-// A macro that just returns checks if the list is either null or empty
+// A macro that just returns checks if the list is empty
 #define IS_EMPTY(target) target->length == 0
 
 // CreateList
@@ -56,6 +63,8 @@ list_t create_list(int semid)
     }
     out_list->semid = semid;
     out_list->length = 0;
+
+    // Allocate all the nodes in the list and sets all to empty
     for (i = 0; i < MAX_USERS; i++)
     {
         entry_t node = (entry_t)malloc(sizeof(struct listElem));
@@ -132,9 +141,9 @@ int get_list_length(list_t list)
 bool_t add(list_t list, string_t name, guid_t guid, int socket)
 {
     int semid = list->semid, i;
-
     SEM_LOCK(sop, semid);
 
+    // Check if maximum number of users has been reached
     if (list->length == MAX_USERS)
     {
         SEM_RELEASE(sop, semid);
@@ -156,7 +165,7 @@ bool_t add(list_t list, string_t name, guid_t guid, int socket)
     node->empty = FALSE;
     printf("DEBUG: node allocated and filled\n");
 
-    // insert the node in the first available spot
+    // Insert the node in the first available spot
     for (i = 0; i < MAX_USERS; i++)
     {
         entry_t entry = list->list[i];
@@ -172,9 +181,10 @@ bool_t add(list_t list, string_t name, guid_t guid, int socket)
         }
     }
 
+    // Increase the number of elements in the list and release the semaphore
     list->length = list->length + 1;
-
     SEM_RELEASE(sop, semid);
+
     return TRUE;
 }
 
@@ -182,7 +192,6 @@ bool_t add(list_t list, string_t name, guid_t guid, int socket)
 bool_t remove_guid(list_t list, guid_t guid)
 {
     int semid = list->semid, i;
-
     SEM_LOCK(sop, semid);
 
     // Check if the list is empty
@@ -192,7 +201,7 @@ bool_t remove_guid(list_t list, guid_t guid)
         return FALSE;
     }
 
-    // Create a temp iterator
+    // Iterates on all the spots and check for the node with the given guid
     for (i = 0; i < MAX_USERS; i++)
     {
         entry_t node = list->list[i];
@@ -219,7 +228,7 @@ bool_t remove_guid(list_t list, guid_t guid)
             }
             printf("DEBUG socket closed\n");
 
-            // Update the list length and deallocate the removed item
+            // Update the list length and set the node to empty
             memset(node, 0, sizeof(struct listElem));
             node->empty = EMPTY;
             list->length = list->length - 1;
@@ -238,7 +247,6 @@ bool_t remove_guid(list_t list, guid_t guid)
 static entry_t get_node(list_t list, guid_t guid)
 {
     int semid = list->semid, i;
-
     SEM_LOCK(sop, semid);
 
     if (IS_EMPTY(list))
@@ -281,7 +289,7 @@ bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value)
     return TRUE;
 }
 
-// Set the chat partner of the user "guid" at "partner"
+// Set the chat partner of the user "guid" to "partner"
 bool_t set_partner(list_t list, guid_t guid, guid_t partner)
 {
     entry_t n = get_node(list, guid);
@@ -385,6 +393,7 @@ string_t serialize_list(const list_t list)
     {
         entry_t pointer = list->list[i];
 
+        // Only the available users will be serialized
         if (pointer->empty || !(pointer->available)) continue;
 
         printf("DEBUG name: %s\n", pointer->name);
@@ -414,7 +423,7 @@ string_t serialize_list(const list_t list)
 
         // Serialize the GUID and copy it inside the buffer
         char* serialized_guid = serialize_guid(pointer->guid);
-        strcpy(internal_buffer + name_len, serialized_guid);
+        strncpy(internal_buffer + name_len, serialized_guid, 33);
         free(serialized_guid);
 
         // Add the current string to the buffer

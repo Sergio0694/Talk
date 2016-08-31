@@ -1,3 +1,9 @@
+/* ===========================================================================
+*  string_helper.c
+* ============================================================================
+
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,9 +36,9 @@ string_t string_concat(string_t s1, string_t s2, char separator)
     string_t out = (string_t)malloc(sizeof(char) * final_len);
 
     // Copy the first string and add the separator, then the second string
-    strcpy(out, s1);
+    strncpy(out, s1, len1);
     out[len1] = separator;
-    strcpy(out + len1 + 1, s2);
+    strncpy(out + len1 + 1, s2, len2);
 
     // Free the source buffers and return the result
     free(s1);

@@ -1,8 +1,8 @@
 /* ============================================================================
-*  guid.h
+*  types.h
 * ============================================================================
 
-*  Authors:         (c) 2015 Sergio Pedri and Andrea Salvati */
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
 
 #ifndef TYPES_H
 #define TYPES_H

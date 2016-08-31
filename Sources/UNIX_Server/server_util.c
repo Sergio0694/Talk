@@ -1,3 +1,9 @@
+/* ===========================================================================
+*  server_util.c
+* ============================================================================
+
+*  Authors:         (c) 2016 Sergio Pedri and Andrea Salvati */
+
 #include <stddef.h> /* size_t */
 #include <string.h>
 #include <errno.h>
@@ -14,8 +20,10 @@ int send_to_client(int socket, char* buf)
     int ret;
     size_t sent_bytes = 0, msg_len = strlen(buf);
 
+    // Substitute the string terminator with a \n
     buf[msg_len++] = '\n';
 
+    // Handle partial sends
     while (TRUE)
     {
         ret = send(socket, buf + sent_bytes, msg_len, 0);
@@ -34,7 +42,7 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
     size_t bytes_read = 0;
     strncpy(buf, "", buf_len);
 
-    // messages longer than buf_len will be truncated
+    // Messages longer than buf_len will be truncated
     while (bytes_read <= buf_len)
     {
         ret = recv(socket, buf + bytes_read, 1, 0);
@@ -42,11 +50,12 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
         if (ret == 0) return CLIENT_UNEXPECTED_CLOSE; // unexpected close from client
         if (ret < 0) return UNEXPECTED_ERROR;
 
-        // a complete message from client finish with a \n
+        // A complete message from client finishes with a \n
         if (buf[bytes_read] == '\n') break;
 
         bytes_read += ret;
-        // if there is no \n the message is truncated when is length is buf_len
+
+        // If there is no \n the message is truncated when its length is buf_len
         if (bytes_read == buf_len) break;
     }
 
@@ -56,6 +65,7 @@ int recv_from_client(int socket, char* buf, size_t buf_len)
     return bytes_read;
 }
 
+// Check for the presence of unwanted special character
 bool_t name_validation(char* name, size_t len)
 {
     unsigned i;
@@ -67,16 +77,16 @@ bool_t name_validation(char* name, size_t len)
     return TRUE;
 }
 
+// Perform initial operations like bind and listen
 void server_intial_setup(int socket_desc)
 {
     int ret;
 
-    // some fields are required to be filled with 0
+    // Some fields are required to be filled with 0
     struct sockaddr_in server_addr = { 0 };
-
     int sockaddr_len = sizeof(struct sockaddr_in);
 
-    // initialize sockaddr_in fields
+    // Initialize sockaddr_in fields
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT_NUMBER);
     server_addr.sin_addr.s_addr = INADDR_ANY; // we want to accept connections from any interface
@@ -86,11 +96,11 @@ void server_intial_setup(int socket_desc)
     ret = setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_opt, sizeof(reuseaddr_opt));
     ERROR_HELPER(ret, "Cannot set SO_REUSEADDR option");
 
-    // bind address to socket
+    // Bind address to socket
     ret = bind(socket_desc, (struct sockaddr*)&server_addr, sockaddr_len);
     ERROR_HELPER(ret, "Cannot bind address to socket");
 
-    // start listening
+    // Start listening
     ret = listen(socket_desc, MAX_CONN_QUEUE);
     ERROR_HELPER(ret, "Cannot listen on socket");
 }
