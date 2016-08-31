@@ -51,7 +51,7 @@ client_list_t client_users_list = NULL;
 SOCKET socketd = INVALID_SOCKET;
 int chat_window_port;
 HANDLE semaphore;
-char quit[5] = "";
+BOOL quit = FALSE;
 /* ========================= */
 
 // Creates a socket
@@ -215,7 +215,7 @@ DWORD WINAPI chat_handler_in(LPVOID arg)
         {
             DWORD ret = WaitForSingleObject(semaphore, INFINITE);
             ERROR_HELPER(ret == WAIT_FAILED, "Error while waiting");
-            if (strncmp(quit, "", 1) == 0) strncpy(quit, "QUIT", 4);
+            if (!quit) quit = TRUE;
             BOOL success = ReleaseSemaphore(semaphore, 1, NULL);
             ERROR_HELPER(!success, "Error while releasing the semaphore");
 
@@ -249,7 +249,7 @@ DWORD WINAPI chat_handler_out(LPVOID arg)
         // If a quit message is received, exit the chat
         DWORD ret = WaitForSingleObject(semaphore, INFINITE);
         ERROR_HELPER(ret == WAIT_FAILED, "Error while waiting");
-        if (strncmp(quit, "QUIT", 4) == 0)
+        if (quit)
         {
             char quit_to_send[5] = { 'Q', 'U', 'I', 'T', '\n' };
             send_to_socket(socketd, quit_to_send);
@@ -280,7 +280,7 @@ void chat(string_t username)
     semaphore = CreateSemaphore(NULL, /* initialCount = */ 1, /* maxCount = */ 1, NULL);
     ERROR_HELPER(semaphore == NULL, "Error in semaphore creation");
 
-    strncpy(quit, "", 5); // clear possible previous settings
+    quit = FALSE; // clear possible previous settings
 
     // Prepare the threads structure
     chat_thread_args_t arg = { 0 };
