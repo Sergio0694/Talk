@@ -81,8 +81,7 @@ bool_t set_available_flag(const list_t list, guid_t guid, bool_t target_value);
 *  =====================================================================
 *  Description:
 *    Sets the "partner" parameter of the item with the given GUID.
-*    Returns TRUE if the operation was successful,
-*    FALSE if the item wasn't present
+*    Returns TRUE if the operation was successful, FALSE otherwise
 *  Parameters:
 *    list ---> The input list
 *    guid ---> The GUID of the item to find

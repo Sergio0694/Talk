@@ -161,7 +161,6 @@ guid_t pick_target_user()
             printf("The input index isn't valid or you never refresh the users list\n");
         return guid;
     }
-
 }
 
 // Sends the given guid to the server
@@ -343,10 +342,10 @@ void print_menu()
 BOOL CtrlHandler(DWORD fdwCtrlType)
 {
     // Skip other signals
-    if (fdwCtrlType != CTRL_C_EVENT ||
-        fdwCtrlType != CTRL_BREAK_EVENT ||
-        fdwCtrlType != CTRL_CLOSE_EVENT ||
-        fdwCtrlType != CTRL_LOGOFF_EVENT ||
+    if (fdwCtrlType != CTRL_C_EVENT &&
+        fdwCtrlType != CTRL_BREAK_EVENT &&
+        fdwCtrlType != CTRL_CLOSE_EVENT &&
+        fdwCtrlType != CTRL_LOGOFF_EVENT &&
         fdwCtrlType != CTRL_SHUTDOWN_EVENT) return FALSE;
     exit_with_cleanup();
 }
